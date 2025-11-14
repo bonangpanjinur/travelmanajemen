@@ -11,8 +11,12 @@ if (!defined('ABSPATH')) {
 /**
  * Fungsi aktivasi plugin.
  * Dipanggil saat plugin diaktifkan.
+ *
+ * PERBAIKAN: Nama fungsi diubah dari 'umroh_manager_activate' 
+ * menjadi 'umroh_manager_create_tables' agar sesuai dengan
+ * panggilan di file 'umroh-manager-hybrid.php'.
  */
-function umroh_manager_activate() {
+function umroh_manager_create_tables() {
     global $wpdb;
     require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
 
