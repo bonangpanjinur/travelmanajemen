@@ -1,108 +1,144 @@
 <?php
 // File: includes/api/api-flights.php
-// (File BARU dibuat berdasarkan pola)
+// KERANGKA (TEMPLATE) AMAN UNTUK API PESAWAT (CRUD LENGKAP)
 
-global $wpdb;
-$table_name = $wpdb->prefix . 'travel_flights'; // Asumsi nama tabel
-
-switch ($method) {
-    case 'GET':
-        check_auth(array('administrator', 'editor'));
-        if ($id) {
-            handle_get_flight($id);
-        } else {
-            handle_get_all_flights();
-        }
-        break;
-    case 'POST':
-        check_auth(array('administrator'));
-        handle_create_flight($data);
-        break;
-    case 'PUT':
-        check_auth(array('administrator'));
-        handle_update_flight($id, $data);
-        break;
-    case 'DELETE':
-        check_auth(array('administrator'));
-        handle_delete_flight($id);
-        break;
-    default:
-        wp_send_json_error(array('message' => 'Metode request tidak valid.'), 405);
-        break;
+if (!defined('ABSPATH')) {
+    exit; // Exit if accessed directly.
 }
 
-function handle_get_all_flights() {
-    global $wpdb, $table_name;
-    $query = $wpdb->prepare("SELECT * FROM $table_name ORDER BY airline_name ASC", array());
-    $results = $wpdb->get_results($query, ARRAY_A);
-    wp_send_json_success(array('data' => $results));
-}
-
-function handle_get_flight($id) {
-    global $wpdb, $table_name;
-    $query = $wpdb->prepare("SELECT * FROM $table_name WHERE id = %d", $id);
-    $result = $wpdb->get_row($query, ARRAY_A);
-    if (!$result) {
-        wp_send_json_error(array('message' => 'Penerbangan tidak ditemukan.'), 404);
-        return;
-    }
-    wp_send_json_success(array('data' => $result));
-}
-
-function handle_create_flight($data) {
-    global $wpdb, $table_name;
+// Daftarkan Rute API
+add_action('rest_api_init', function () {
+    $namespace = 'umh/v1';
     
-    if (empty($data['airline_name']) || empty($data['flight_number'])) {
-        wp_send_json_error(array('message' => 'Maskapai dan No. Penerbangan tidak boleh kosong.'), 400);
-        return;
-    }
-    $insert_data = array(
-        'airline_name' => sanitize_text_field($data['airline_name']),
-        'flight_number' => sanitize_text_field($data['flight_number']),
-        'departure_airport' => sanitize_text_field($data['departure_airport']),
-        'arrival_airport' => sanitize_text_field($data['arrival_airport']),
-    );
-    $formats = array('%s', '%s', '%s', '%s');
-    $result = $wpdb->insert($table_name, $insert_data, $formats);
+    // Rute: /umh/v1/flights (GET)
+    register_rest_route($namespace, '/flights', array(
+        'methods'             => 'GET',
+        'callback'            => 'umh_get_flights',
+        'permission_callback' => 'umh_check_api_permission', // <-- PENGAMAN
+    ));
 
-    if ($result === false) {
-        wp_send_json_error(array('message' => 'Gagal menyimpan penerbangan.', 'db_error' => $wpdb->last_error));
-    } else {
-        $new_id = $wpdb->insert_id;
-        $new_flight = $wpdb->get_row($wpdb->prepare("SELECT * FROM $table_name WHERE id = %d", $new_id), ARRAY_A);
-        wp_send_json_success(array('data' => $new_flight), 201);
-    }
+    // Rute: /umh/v1/flights (POST)
+    register_rest_route($namespace, '/flights', array(
+        'methods'             => 'POST',
+        'callback'            => 'umh_create_flight',
+        'permission_callback' => 'umh_check_api_permission', // <-- PENGAMAN
+    ));
+
+    // === TAMBAHAN: Rute Update (PUT) ===
+    register_rest_route($namespace, '/flights/(?P<id>\d+)', array(
+        'methods'             => 'PUT, POST',
+        'callback'            => 'umh_update_flight',
+        'permission_callback' => 'umh_check_api_permission', // <-- PENGAMAN
+        'args'                => array('id' => array('validate_callback' => 'is_numeric')),
+    ));
+
+    // === TAMBAHAN: Rute Delete (DELETE) ===
+    register_rest_route($namespace, '/flights/(?P<id>\d+)', array(
+        'methods'             => 'DELETE',
+        'callback'            => 'umh_delete_flight',
+        'permission_callback' => 'umh_check_api_permission', // <-- PENGAMAN
+        'args'                => array('id' => array('validate_callback' => 'is_numeric')),
+    ));
+});
+
+/**
+ * Callback untuk GET /flights
+ * TODO: ISI LOGIKA ANDA DI SINI
+ */
+function umh_get_flights(WP_REST_Request $request) {
+    global $wpdb;
+    $table_name = $wpdb->prefix . 'umh_flights';
+
+    // TODO: Tulis logika query Anda di sini.
+    // Contoh: $results = $wpdb->get_results("SELECT * FROM $table_name");
+    // return new WP_REST_Response($results, 200);
+
+    return new WP_REST_Response(['message' => 'Fungsi umh_get_flights belum diimplementasi.'], 501);
 }
 
-function handle_update_flight($id, $data) {
-    global $wpdb, $table_name;
-    $update_data = array(
-        'airline_name' => sanitize_text_field($data['airline_name']),
-        'flight_number' => sanitize_text_field($data['flight_number']),
-        'departure_airport' => sanitize_text_field($data['departure_airport']),
-        'arrival_airport' => sanitize_text_field($data['arrival_airport']),
-    );
-    $formats = array('%s', '%s', '%s', '%s');
-    $where = array('id' => $id);
-    $where_format = array('%d');
-    $result = $wpdb->update($table_name, $update_data, $where, $formats, $where_format);
+/**
+ * Callback untuk POST /flights
+ * TODO: ISI LOGIKA ANDA DI SINI
+ */
+function umh_create_flight(WP_REST_Request $request) {
+    global $wpdb;
+    $table_name = $wpdb->prefix . 'umh_flights';
+    
+    $params = $request->get_json_params();
+    if (empty($params)) $params = $request->get_body_params();
 
-    if ($result === false) {
-        wp_send_json_error(array('message' => 'Gagal mengupdate penerbangan.', 'db_error' => $wpdb->last_error));
-    } else {
-        $updated_flight = $wpdb->get_row($wpdb->prepare("SELECT * FROM $table_name WHERE id = %d", $id), ARRAY_A);
-        wp_send_json_success(array('data' => $updated_flight));
-    }
+    // TODO: Tulis logika insert Anda di sini.
+    // Contoh:
+    // $data = [
+    //     'airline_name' => $params['airline_name'],
+    //     'flight_number'  => $params['flight_number'],
+    //     // ... data lain
+    // ];
+    // $format = ['%s', '%s'];
+    // $wpdb->insert($table_name, $data, $format);
+    // $new_id = $wpdb->insert_id;
+    //
+    // if ($new_id) {
+    //     $new_flight = $wpdb->get_row("SELECT * FROM $table_name WHERE id = $new_id");
+    //     return new WP_REST_Response($new_flight, 201); // 201 Created
+    // } else {
+    //     return new WP_Error('create_failed', 'Gagal membuat data penerbangan baru.', ['status' => 500]);
+    // }
+
+    return new WP_REST_Response(['message' => 'Fungsi umh_create_flight belum diimplementasi.'], 501);
 }
 
-function handle_delete_flight($id) {
-    global $wpdb, $table_name;
-    $result = $wpdb->delete($table_name, array('id' => $id), array('%d'));
-    if ($result === false) {
-        wp_send_json_error(array('message' => 'Gagal menghapus penerbangan.', 'db_error' => $wpdb->last_error));
-    } elseif ($result === 0) {
-        wp_send_json_error(array('message' => 'Penerbangan tidak ditemukan.'), 404);
-    } else {
-        wp_send_json_success(array('message' => 'Penerbangan berhasil dihapus.'));
-    }
+// === TAMBAHAN: Fungsi callback untuk Update (PUT) ===
+/**
+ * Callback untuk PUT /flights/<id>
+ * TODO: ISI LOGIKA ANDA DI SINI
+ */
+function umh_update_flight(WP_REST_Request $request) {
+    global $wpdb;
+    $table_name = $wpdb->prefix . 'umh_flights';
+    $id = $request['id'];
+    
+    $params = $request->get_json_params();
+    if (empty($params)) $params = $request->get_body_params();
+
+    // TODO: Tulis logika update Anda di sini.
+    // Contoh:
+    // $data = [
+    //     'airline_name' => $params['airline_name'],
+    //     'flight_number'  => $params['flight_number'],
+    // ];
+    // $where = ['id' => $id];
+    // $format = ['%s', '%s'];
+    // $where_format = ['%d'];
+    // $updated = $wpdb->update($table_name, $data, $where, $format, $where_format);
+    //
+    // if ($updated === false) {
+    //     return new WP_Error('update_failed', 'Gagal memperbarui penerbangan.', ['status' => 500]);
+    // }
+    // $updated_flight = $wpdb->get_row($wpdb->prepare("SELECT * FROM $table_name WHERE id = %d", $id));
+    // return new WP_REST_Response($updated_flight, 200);
+
+    return new WP_REST_Response(['message' => 'Fungsi umh_update_flight belum diimplementasi.'], 501);
+}
+
+// === TAMBAHAN: Fungsi callback untuk Delete (DELETE) ===
+/**
+ * Callback untuk DELETE /flights/<id>
+ * TODO: ISI LOGIKA ANDA DI SINI
+ */
+function umh_delete_flight(WP_REST_Request $request) {
+    global $wpdb;
+    $table_name = $wpdb->prefix . 'umh_flights';
+    $id = $request['id'];
+
+    // TODO: Tulis logika delete Anda di sini.
+    // Contoh:
+    // $deleted = $wpdb->delete($table_name, ['id' => $id], ['%d']);
+    // if ($deleted) {
+    //     return new WP_REST_Response(['message' => 'Penerbangan berhasil dihapus.'], 200);
+    // } else {
+    //     return new WP_Error('delete_failed', 'Gagal menghapus penerbangan.', ['status' => 500]);
+    // }
+
+    return new WP_REST_Response(['message' => 'Fungsi umh_delete_flight belum diimplementasi.'], 501);
 }

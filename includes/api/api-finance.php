@@ -1,139 +1,148 @@
 <?php
 // File: includes/api/api-finance.php
-// (Versi final, perbaikan dari sebelumnya)
+// KERANGKA (TEMPLATE) AMAN UNTUK API KEUANGAN (CRUD LENGKAP)
 
-global $wpdb, $method, $id, $data;
-$table_name = $wpdb->prefix . 'travel_finance'; 
-
-switch ($method) {
-    case 'GET':
-        check_auth(array('administrator'));
-        if ($id) {
-            handle_get_transaction($id);
-        } else {
-            handle_get_all_transactions();
-        }
-        break;
-    case 'POST':
-        check_auth(array('administrator'));
-        handle_create_transaction($data);
-        break;
-    case 'PUT':
-        check_auth(array('administrator'));
-        handle_update_transaction($id, $data);
-        break;
-    case 'DELETE':
-        check_auth(array('administrator'));
-        handle_delete_transaction($id);
-        break;
-    default:
-        wp_send_json_error(array('message' => 'Metode request tidak valid.'), 405);
-        break;
+if (!defined('ABSPATH')) {
+    exit; // Exit if accessed directly.
 }
 
-function handle_get_all_transactions() {
-    global $wpdb, $table_name;
-    $query = $wpdb->prepare("
-        SELECT t.*, j.name as jamaah_name
-        FROM $table_name t
-        LEFT JOIN {$wpdb->prefix}travel_jamaah j ON t.jamaah_id = j.id
-        ORDER BY t.transaction_date DESC
-    ", array());
-    $results = $wpdb->get_results($query, ARRAY_A);
-
-    // --- PERBAIKAN DITAMBAHKAN ---
-    // Cek jika query gagal (misal: tabel tidak ada)
-    if ($results === null) {
-        wp_send_json_error(array('message' => 'Gagal mengambil data: ' . $wpdb->last_error), 500);
-        return;
-    }
-    // --- AKHIR PERBAIKAN ---
-
-    wp_send_json_success(array('data' => $results, 'success' => true));
-}
-
-function handle_get_transaction($id) {
-    global $wpdb, $table_name;
-    $query = $wpdb->prepare("
-        SELECT t.*, j.name as jamaah_name
-        FROM $table_name t
-        LEFT JOIN {$wpdb->prefix}travel_jamaah j ON t.jamaah_id = j.id
-        WHERE t.id = %d
-    ", $id);
-    $result = $wpdb->get_row($query, ARRAY_A);
-    if (!$result) {
-        wp_send_json_error(array('message' => 'Transaksi tidak ditemukan.'), 404);
-        return;
-    }
-    wp_send_json_success(array('data' => $result, 'success' => true));
-}
-
-function handle_create_transaction($data) {
-    global $wpdb, $table_name;
+// Daftarkan Rute API
+add_action('rest_api_init', function () {
+    $namespace = 'umh/v1';
     
-    if (empty($data['description']) || !isset($data['amount'])) {
-        wp_send_json_error(array('message' => 'Deskripsi dan Jumlah tidak boleh kosong.'), 400);
-        return;
-    }
-    $insert_data = array(
-        'description' => sanitize_text_field($data['description']),
-        'amount' => floatval($data['amount']),
-        'type' => in_array($data['type'], array('income', 'expense')) ? $data['type'] : 'expense',
-        'transaction_date' => sanitize_text_field($data['transaction_date']),
-        'jamaah_id' => !empty($data['jamaah_id']) ? intval($data['jamaah_id']) : null, 
-    );
-    $formats = array('%s', '%f', '%s', '%s', '%d');
-    $result = $wpdb->insert($table_name, $insert_data, $formats);
+    // Rute: /umh/v1/finance (GET)
+    register_rest_route($namespace, '/finance', array(
+        'methods'             => 'GET',
+        'callback'            => 'umh_get_finance_entries',
+        'permission_callback' => 'umh_check_api_permission', // <-- PENGAMAN
+    ));
 
-    if ($result === false) {
-        wp_send_json_error(array('message' => 'Gagal menyimpan transaksi.', 'db_error' => $wpdb->last_error));
-    } else {
-        $new_id = $wpdb->insert_id;
-        $new_trx = $wpdb->get_row($wpdb->prepare("
-            SELECT t.*, j.name as jamaah_name
-            FROM $table_name t
-            LEFT JOIN {$wpdb->prefix}travel_jamaah j ON t.jamaah_id = j.id
-            WHERE t.id = %d
-        ", $new_id), ARRAY_A);
-        wp_send_json_success(array('data' => $new_trx, 'success' => true), 201);
-    }
+    // Rute: /umh/v1/finance (POST)
+    register_rest_route($namespace, '/finance', array(
+        'methods'             => 'POST',
+        'callback'            => 'umh_create_finance_entry',
+        'permission_callback' => 'umh_check_api_permission', // <-- PENGAMAN
+    ));
+
+    // === TAMBAHAN: Rute Update (PUT) ===
+    register_rest_route($namespace, '/finance/(?P<id>\d+)', array(
+        'methods'             => 'PUT, POST',
+        'callback'            => 'umh_update_finance_entry',
+        'permission_callback' => 'umh_check_api_permission', // <-- PENGAMAN
+        'args'                => array('id' => array('validate_callback' => 'is_numeric')),
+    ));
+
+    // === TAMBAHAN: Rute Delete (DELETE) ===
+    register_rest_route($namespace, '/finance/(?P<id>\d+)', array(
+        'methods'             => 'DELETE',
+        'callback'            => 'umh_delete_finance_entry',
+        'permission_callback' => 'umh_check_api_permission', // <-- PENGAMAN
+        'args'                => array('id' => array('validate_callback' => 'is_numeric')),
+    ));
+});
+
+/**
+ * Callback untuk GET /finance
+ * TODO: ISI LOGIKA ANDA DI SINI
+ */
+function umh_get_finance_entries(WP_REST_Request $request) {
+    global $wpdb;
+    $table_name = $wpdb->prefix . 'umh_finance';
+
+    // TODO: Tulis logika query Anda di sini.
+    // Contoh: $results = $wpdb->get_results("SELECT * FROM $table_name");
+    // return new WP_REST_Response($results, 200);
+
+    return new WP_REST_Response(['message' => 'Fungsi umh_get_finance_entries belum diimplementasi.'], 501);
 }
 
-function handle_update_transaction($id, $data) {
-    global $wpdb, $table_name;
-    $update_data = array(
-        'description' => sanitize_text_field($data['description']),
-        'amount' => floatval($data['amount']),
-        'type' => in_array($data['type'], array('income', 'expense')) ? $data['type'] : 'expense',
-        'transaction_date' => sanitize_text_field($data['transaction_date']),
-        'jamaah_id' => !empty($data['jamaah_id']) ? intval($data['jamaah_id']) : null, 
-    );
-    $formats = array('%s', '%f', '%s', '%s', '%d');
-    $where = array('id' => $id);
-    $where_format = array('%d');
-    $result = $wpdb->update($table_name, $update_data, $where, $formats, $where_format);
+/**
+ * Callback untuk POST /finance
+ * TODO: ISI LOGIKA ANDA DI SINI
+ */
+function umh_create_finance_entry(WP_REST_Request $request) {
+    global $wpdb;
+    $table_name = $wpdb->prefix . 'umh_finance';
+    
+    $params = $request->get_json_params();
+    if (empty($params)) $params = $request->get_body_params();
 
-    if ($result === false) {
-        wp_send_json_error(array('message' => 'Gagal mengupdate transaksi.', 'db_error' => $wpdb->last_error));
-    } else {
-        $updated_trx = $wpdb->get_row($wpdb->prepare("
-            SELECT t.*, j.name as jamaah_name
-            FROM $table_name t
-            LEFT JOIN {$wpdb->prefix}travel_jamaah j ON t.jamaah_id = j.id
-            WHERE t.id = %d
-        ", $id), ARRAY_A);
-        wp_send_json_success(array('data' => $updated_trx, 'success' => true));
-    }
+    // TODO: Tulis logika insert Anda di sini.
+    // Contoh:
+    // $data = [
+    //     'jamaah_id'      => $params['jamaah_id'],
+    //     'description'    => $params['description'],
+    //     'amount'         => $params['amount'],
+    //     'type'           => $params['type'], // 'income' or 'expense'
+    //     'transaction_date' => $params['transaction_date'] ?? current_time('mysql'),
+    // ];
+    // $format = ['%d', '%s', '%f', '%s', '%s'];
+    // $wpdb->insert($table_name, $data, $format);
+    // $new_id = $wpdb->insert_id;
+    //
+    // if ($new_id) {
+    //     $new_entry = $wpdb->get_row("SELECT * FROM $table_name WHERE id = $new_id");
+    //     return new WP_REST_Response($new_entry, 201); // 201 Created
+    // } else {
+    //     return new WP_Error('create_failed', 'Gagal membuat entri keuangan baru.', ['status' => 500]);
+    // }
+
+    return new WP_REST_Response(['message' => 'Fungsi umh_create_finance_entry belum diimplementasi.'], 501);
 }
 
-function handle_delete_transaction($id) {
-    global $wpdb, $table_name;
-    $result = $wpdb->delete($table_name, array('id' => $id), array('%d'));
-    if ($result === false) {
-        wp_send_json_error(array('message' => 'Gagal menghapus transaksi.', 'db_error' => $wpdb->last_error));
-    } elseif ($result === 0) {
-        wp_send_json_error(array('message' => 'Transaksi tidak ditemukan.'), 404);
-    } else {
-        wp_send_json_success(array('message' => 'Transaksi berhasil dihapus.', 'success' => true));
-    }
+// === TAMBAHAN: Fungsi callback untuk Update (PUT) ===
+/**
+ * Callback untuk PUT /finance/<id>
+ * TODO: ISI LOGIKA ANDA DI SINI
+ */
+function umh_update_finance_entry(WP_REST_Request $request) {
+    global $wpdb;
+    $table_name = $wpdb->prefix . 'umh_finance';
+    $id = $request['id'];
+    
+    $params = $request->get_json_params();
+    if (empty($params)) $params = $request->get_body_params();
+
+    // TODO: Tulis logika update Anda di sini.
+    // Contoh:
+    // $data = [
+    //     'jamaah_id'      => $params['jamaah_id'],
+    //     'description'    => $params['description'],
+    //     'amount'         => $params['amount'],
+    //     'type'           => $params['type'],
+    // ];
+    // $where = ['id' => $id];
+    // $format = ['%d', '%s', '%f', '%s'];
+    // $where_format = ['%d'];
+    // $updated = $wpdb->update($table_name, $data, $where, $format, $where_format);
+    //
+    // if ($updated === false) {
+    //     return new WP_Error('update_failed', 'Gagal memperbarui entri keuangan.', ['status' => 500]);
+    // }
+    // $updated_entry = $wpdb->get_row($wpdb->prepare("SELECT * FROM $table_name WHERE id = %d", $id));
+    // return new WP_REST_Response($updated_entry, 200);
+
+    return new WP_REST_Response(['message' => 'Fungsi umh_update_finance_entry belum diimplementasi.'], 501);
+}
+
+// === TAMBAHAN: Fungsi callback untuk Delete (DELETE) ===
+/**
+ * Callback untuk DELETE /finance/<id>
+ * TODO: ISI LOGIKA ANDA DI SINI
+ */
+function umh_delete_finance_entry(WP_REST_Request $request) {
+    global $wpdb;
+    $table_name = $wpdb->prefix . 'umh_finance';
+    $id = $request['id'];
+
+    // TODO: Tulis logika delete Anda di sini.
+    // Contoh:
+    // $deleted = $wpdb->delete($table_name, ['id' => $id], ['%d']);
+    // if ($deleted) {
+    //     return new WP_REST_Response(['message' => 'Entri keuangan berhasil dihapus.'], 200);
+    // } else {
+    //     return new WP_Error('delete_failed', 'Gagal menghapus entri keuangan.', ['status' => 500]);
+    // }
+
+    return new WP_REST_Response(['message' => 'Fungsi umh_delete_finance_entry belum diimplementasi.'], 501);
 }

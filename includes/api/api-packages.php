@@ -1,120 +1,179 @@
 <?php
 // File: includes/api/api-packages.php
-// (Versi final, perbaikan dari sebelumnya)
+// KERANGKA (TEMPLATE) AMAN UNTUK API PAKET
 
-global $wpdb, $method, $id, $data;
-$table_name = $wpdb->prefix . 'travel_packages'; // Asumsi nama tabel
-
-switch ($method) {
-    case 'GET':
-        // GET bisa diakses oleh role yang lebih banyak
-        check_auth(array('administrator', 'editor'));
-        if ($id) {
-            handle_get_package($id);
-        } else {
-            handle_get_all_packages();
-        }
-        break;
-    case 'POST':
-        check_auth(array('administrator'));
-        handle_create_package($data);
-        break;
-    case 'PUT':
-        check_auth(array('administrator'));
-        handle_update_package($id, $data);
-        break;
-    case 'DELETE':
-        check_auth(array('administrator'));
-        handle_delete_package($id);
-        break;
-    default:
-        wp_send_json_error(array('message' => 'Metode request tidak valid.'), 405);
-        break;
+if (!defined('ABSPATH')) {
+    exit; // Exit if accessed directly.
 }
 
+// Daftarkan Rute API
+add_action('rest_api_init', function () {
+    $namespace = 'umh/v1'; // Namespace API Anda
+    
+    // Rute: /umh/v1/packages (GET) - Mendapatkan semua paket
+    register_rest_route($namespace, '/packages', array(
+        'methods'             => 'GET',
+        'callback'            => 'umh_get_packages',
+        'permission_callback' => 'umh_check_api_permission', // <-- PENGAMAN
+    ));
 
-function handle_get_all_packages() {
-    global $wpdb, $table_name;
-    $query = $wpdb->prepare("SELECT * FROM $table_name ORDER BY departure_date DESC", array());
-    $packages = $wpdb->get_results($query, ARRAY_A); 
-    if ($packages === null) {
-        wp_send_json_error(array('message' => 'Gagal mengambil data paket: ' . $wpdb->last_error));
-        return;
-    }
-    wp_send_json_success(array('data' => $packages, 'success' => true));
+    // Rute: /umh/v1/packages (POST) - Membuat paket baru
+    register_rest_route($namespace, '/packages', array(
+        'methods'             => 'POST',
+        'callback'            => 'umh_create_package',
+        'permission_callback' => 'umh_check_api_permission', // <-- PENGAMAN
+        'args'                => array(
+            'package_name' => array('required' => true, 'sanitize_callback' => 'sanitize_text_field'),
+            'price'        => array('required' => true, 'sanitize_callback' => 'sanitize_text_field'),
+            // Tambahkan args lain di sini
+        ),
+    ));
+    
+    // Rute: /umh/v1/packages/<id> (GET) - Mendapatkan satu paket
+    register_rest_route($namespace, '/packages/(?P<id>\d+)', array(
+        'methods'             => 'GET',
+        'callback'            => 'umh_get_package',
+        'permission_callback' => 'umh_check_api_permission', // <-- PENGAMAN
+        'args'                => array('id' => array('validate_callback' => 'is_numeric')),
+    ));
+
+    // Rute: /umh/v1/packages/<id> (PUT/POST) - Update satu paket
+    register_rest_route($namespace, '/packages/(?P<id>\d+)', array(
+        'methods'             => 'PUT, POST',
+        'callback'            => 'umh_update_package',
+        'permission_callback' => 'umh_check_api_permission', // <-- PENGAMAN
+        'args'                => array('id' => array('validate_callback' => 'is_numeric')),
+    ));
+    
+    // Rute: /umh/v1/packages/<id> (DELETE) - Hapus satu paket
+    register_rest_route($namespace, '/packages/(?P<id>\d+)', array(
+        'methods'             => 'DELETE',
+        'callback'            => 'umh_delete_package',
+        'permission_callback' => 'umh_check_api_permission', // <-- PENGAMAN
+        'args'                => array('id' => array('validate_callback' => 'is_numeric')),
+    ));
+});
+
+/**
+ * Callback untuk GET /packages
+ * TODO: ISI LOGIKA ANDA DI SINI
+ */
+function umh_get_packages(WP_REST_Request $request) {
+    global $wpdb;
+    $table_name = $wpdb->prefix . 'umh_packages';
+
+    // TODO: Tulis logika query Anda di sini.
+    // Contoh: $results = $wpdb->get_results("SELECT * FROM $table_name ORDER BY created_at DESC");
+    // if (empty($results)) {
+    //     return new WP_REST_Response([], 200);
+    // }
+    // return new WP_REST_Response($results, 200);
+
+    return new WP_REST_Response(['message' => 'Fungsi umh_get_packages belum diimplementasi. Buka includes/api/api-packages.php dan isi logikanya.'], 501);
 }
 
-function handle_get_package($id) {
-    global $wpdb, $table_name;
-    $query = $wpdb->prepare("SELECT * FROM $table_name WHERE id = %d", $id);
-    $package = $wpdb->get_row($query, ARRAY_A);
-    if (!$package) {
-        wp_send_json_error(array('message' => 'Paket tidak ditemukan.'), 404);
-        return;
-    }
-    wp_send_json_success(array('data' => $package, 'success' => true));
+/**
+ * Callback untuk POST /packages
+ * TODO: ISI LOGIKA ANDA DI SINI
+ */
+function umh_create_package(WP_REST_Request $request) {
+    global $wpdb;
+    $table_name = $wpdb->prefix . 'umh_packages';
+    
+    $params = $request->get_json_params();
+    if (empty($params)) $params = $request->get_body_params();
+
+    // TODO: Tulis logika insert Anda di sini.
+    // Contoh:
+    // $data = [
+    //     'package_name' => $params['package_name'],
+    //     'description'  => $params['description'] ?? '',
+    //     'price'        => $params['price'],
+    //     // ... data lain
+    // ];
+    // $format = ['%s', '%s', '%f'];
+    // $wpdb->insert($table_name, $data, $format);
+    // $new_id = $wpdb->insert_id;
+    //
+    // if ($new_id) {
+    //     $new_package = $wpdb->get_row("SELECT * FROM $table_name WHERE id = $new_id");
+    //     return new WP_REST_Response($new_package, 201); // 201 Created
+    // } else {
+    //     return new WP_Error('create_failed', 'Gagal membuat paket baru.', ['status' => 500]);
+    // }
+
+    return new WP_REST_Response(['message' => 'Fungsi umh_create_package belum diimplementasi.'], 501);
 }
 
-function handle_create_package($data) {
-    global $wpdb, $table_name;
-    if (empty($data['package_name']) || !isset($data['price'])) {
-        wp_send_json_error(array('message' => 'Nama paket dan harga tidak boleh kosong.'), 400);
-        return;
-    }
-    $insert_data = array(
-        'package_name' => sanitize_text_field($data['package_name']),
-        'description' => sanitize_textarea_field($data['description']),
-        'price' => floatval($data['price']),
-        'departure_date' => sanitize_text_field($data['departure_date']),
-        'duration' => intval($data['duration']),
-        'destination' => sanitize_text_field($data['destination']),
-    );
-    $formats = array('%s', '%s', '%f', '%s', '%d', '%s');
-    $result = $wpdb->insert($table_name, $insert_data, $formats);
+/**
+ * Callback untuk GET /packages/<id>
+ * TODO: ISI LOGIKA ANDA DI SINI
+ */
+function umh_get_package(WP_REST_Request $request) {
+    global $wpdb;
+    $table_name = $wpdb->prefix . 'umh_packages';
+    $id = $request['id'];
 
-    if ($result === false) {
-        wp_send_json_error(array('message' => 'Gagal menambahkan paket.', 'db_error' => $wpdb->last_error));
-    } else {
-        $new_id = $wpdb->insert_id;
-        $new_package = $wpdb->get_row($wpdb->prepare("SELECT * FROM $table_name WHERE id = %d", $new_id), ARRAY_A);
-        wp_send_json_success(array('data' => $new_package, 'success' => true), 201);
-    }
+    // TODO: Tulis logika query Anda di sini.
+    // Contoh: $package = $wpdb->get_row($wpdb->prepare("SELECT * FROM $table_name WHERE id = %d", $id));
+    // if (!$package) {
+    //     return new WP_Error('not_found', 'Paket tidak ditemukan.', ['status' => 404]);
+    // }
+    // return new WP_REST_Response($package, 200);
+
+    return new WP_REST_Response(['message' => 'Fungsi umh_get_package belum diimplementasi.'], 501);
 }
 
-function handle_update_package($id, $data) {
-    global $wpdb, $table_name;
-    $update_data = array(
-        'package_name' => sanitize_text_field($data['package_name']),
-        'description' => sanitize_textarea_field($data['description']),
-        'price' => floatval($data['price']),
-        'departure_date' => sanitize_text_field($data['departure_date']),
-        'duration' => intval($data['duration']),
-        'destination' => sanitize_text_field($data['destination']),
-    );
-    $formats = array('%s', '%s', '%f', '%s', '%d', '%s');
-    $where = array('id' => $id);
-    $where_format = array('%d');
-    $result = $wpdb->update($table_name, $update_data, $where, $formats, $where_format);
+/**
+ * Callback untuk PUT /packages/<id>
+ * TODO: ISI LOGIKA ANDA DI SINI
+ */
+function umh_update_package(WP_REST_Request $request) {
+    global $wpdb;
+    $table_name = $wpdb->prefix . 'umh_packages';
+    $id = $request['id'];
+    
+    $params = $request->get_json_params();
+    if (empty($params)) $params = $request->get_body_params();
 
-    if ($result === false) {
-        wp_send_json_error(array('message' => 'Gagal mengupdate paket.', 'db_error' => $wpdb->last_error));
-    } else {
-        $updated_package = $wpdb->get_row($wpdb->prepare("SELECT * FROM $table_name WHERE id = %d", $id), ARRAY_A);
-        wp_send_json_success(array('data' => $updated_package, 'success' => true));
-    }
+    // TODO: Tulis logika update Anda di sini.
+    // Contoh:
+    // $data = [
+    //     'package_name' => $params['package_name'],
+    //     'price'        => $params['price'],
+    //     // ... data lain
+    // ];
+    // $where = ['id' => $id];
+    // $format = ['%s', '%f'];
+    // $where_format = ['%d'];
+    // $updated = $wpdb->update($table_name, $data, $where, $format, $where_format);
+    //
+    // if ($updated === false) {
+    //     return new WP_Error('update_failed', 'Gagal memperbarui paket.', ['status' => 500]);
+    // }
+    // $updated_package = $wpdb->get_row($wpdb->prepare("SELECT * FROM $table_name WHERE id = %d", $id));
+    // return new WP_REST_Response($updated_package, 200);
+
+    return new WP_REST_Response(['message' => 'Fungsi umh_update_package belum diimplementasi.'], 501);
 }
 
-function handle_delete_package($id) {
-    global $wpdb, $table_name;
-    $where = array('id' => $id);
-    $where_format = array('%d');
-    $result = $wpdb->delete($table_name, $where, $where_format);
+/**
+ * Callback untuk DELETE /packages/<id>
+ * TODO: ISI LOGIKA ANDA DI SINI
+ */
+function umh_delete_package(WP_REST_Request $request) {
+    global $wpdb;
+    $table_name = $wpdb->prefix . 'umh_packages';
+    $id = $request['id'];
 
-    if ($result === false) {
-        wp_send_json_error(array('message' => 'Gagal menghapus paket.', 'db_error' => $wpdb->last_error));
-    } elseif ($result === 0) {
-        wp_send_json_error(array('message' => 'Paket tidak ditemukan untuk dihapus.'), 404);
-    } else {
-        wp_send_json_success(array('message' => 'Paket berhasil dihapus.', 'success' => true));
-    }
+    // TODO: Tulis logika delete Anda di sini.
+    // Contoh:
+    // $deleted = $wpdb->delete($table_name, ['id' => $id], ['%d']);
+    // if ($deleted) {
+    //     return new WP_REST_Response(['message' => 'Paket berhasil dihapus.'], 200);
+    // } else {
+    //     return new WP_Error('delete_failed', 'Gagal menghapus paket.', ['status' => 500]);
+    // }
+
+    return new WP_REST_Response(['message' => 'Fungsi umh_delete_package belum diimplementasi.'], 501);
 }

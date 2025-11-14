@@ -1,129 +1,135 @@
 <?php
 // File: includes/api/api-tasks.php
-// (File BARU dibuat berdasarkan pola, dengan JOIN ke User)
+// KERANGKA (TEMPLATE) AMAN UNTUK API MANAJEMEN TUGAS
 
-global $wpdb;
-$table_name = $wpdb->prefix . 'travel_tasks'; // Asumsi nama tabel
-
-switch ($method) {
-    case 'GET':
-        check_auth(array('administrator', 'editor'));
-        if ($id) {
-            handle_get_task($id);
-        } else {
-            handle_get_all_tasks();
-        }
-        break;
-    case 'POST':
-        check_auth(array('administrator', 'editor'));
-        handle_create_task($data);
-        break;
-    case 'PUT':
-        check_auth(array('administrator', 'editor'));
-        handle_update_task($id, $data);
-        break;
-    case 'DELETE':
-        check_auth(array('administrator'));
-        handle_delete_task($id);
-        break;
-    default:
-        wp_send_json_error(array('message' => 'Metode request tidak valid.'), 405);
-        break;
+if (!defined('ABSPATH')) {
+    exit; // Exit if accessed directly.
 }
 
-function handle_get_all_tasks() {
-    global $wpdb, $table_name;
-    $query = $wpdb->prepare("
-        SELECT t.*, u.display_name as assigned_to_name
-        FROM $table_name t
-        LEFT JOIN {$wpdb->prefix}users u ON t.assigned_to_user_id = u.ID
-        ORDER BY t.status ASC, t.id DESC
-    ", array());
-    $results = $wpdb->get_results($query, ARRAY_A);
-    wp_send_json_success(array('data' => $results));
-}
-
-function handle_get_task($id) {
-    global $wpdb, $table_name;
-    $query = $wpdb->prepare("
-        SELECT t.*, u.display_name as assigned_to_name
-        FROM $table_name t
-        LEFT JOIN {$wpdb->prefix}users u ON t.assigned_to_user_id = u.ID
-        WHERE t.id = %d
-    ", $id);
-    $result = $wpdb->get_row($query, ARRAY_A);
-    if (!$result) {
-        wp_send_json_error(array('message' => 'Tugas tidak ditemukan.'), 404);
-        return;
-    }
-    wp_send_json_success(array('data' => $result));
-}
-
-function handle_create_task($data) {
-    global $wpdb, $table_name;
+// Daftarkan Rute API
+add_action('rest_api_init', function () {
+    $namespace = 'umh/v1';
     
-    if (empty($data['task_name'])) {
-        wp_send_json_error(array('message' => 'Nama tugas tidak boleh kosong.'), 400);
-        return;
-    }
-    $insert_data = array(
-        'task_name' => sanitize_text_field($data['task_name']),
-        'description' => sanitize_textarea_field($data['description']),
-        'status' => in_array($data['status'], array('pending', 'in_progress', 'completed')) ? $data['status'] : 'pending',
-        'assigned_to_user_id' => !empty($data['assigned_to_user_id']) ? intval($data['assigned_to_user_id']) : null,
-        'created_by_user_id' => get_current_user_id(), // Catat siapa yang membuat
-    );
-    $formats = array('%s', '%s', '%s', '%d', '%d');
-    $result = $wpdb->insert($table_name, $insert_data, $formats);
+    // Rute: /umh/v1/tasks (GET)
+    register_rest_route($namespace, '/tasks', array(
+        'methods'             => 'GET',
+        'callback'            => 'umh_get_tasks',
+        'permission_callback' => 'umh_check_api_permission', // <-- PENGAMAN
+    ));
 
-    if ($result === false) {
-        wp_send_json_error(array('message' => 'Gagal menyimpan tugas.', 'db_error' => $wpdb->last_error));
-    } else {
-        $new_id = $wpdb->insert_id;
-        $new_task = $wpdb->get_row($wpdb->prepare("
-            SELECT t.*, u.display_name as assigned_to_name
-            FROM $table_name t
-            LEFT JOIN {$wpdb->prefix}users u ON t.assigned_to_user_id = u.ID
-            WHERE t.id = %d
-        ", $new_id), ARRAY_A);
-        wp_send_json_success(array('data' => $new_task), 201);
-    }
+    // Rute: /umh/v1/tasks (POST)
+    register_rest_route($namespace, '/tasks', array(
+        'methods'             => 'POST',
+        'callback'            => 'umh_create_task',
+        'permission_callback' => 'umh_check_api_permission', // <-- PENGAMAN
+    ));
+    
+    // Rute: /umh/v1/tasks/<id> (PUT)
+    register_rest_route($namespace, '/tasks/(?P<id>\d+)', array(
+        'methods'             => 'PUT, POST',
+        'callback'            => 'umh_update_task',
+        'permission_callback' => 'umh_check_api_permission', // <-- PENGAMAN
+    ));
+    
+    // Rute: /umh/v1/tasks/<id> (DELETE)
+    register_rest_route($namespace, '/tasks/(?P<id>\d+)', array(
+        'methods'             => 'DELETE',
+        'callback'            => 'umh_delete_task',
+        'permission_callback' => 'umh_check_api_permission', // <-- PENGAMAN
+    ));
+});
+
+/**
+ * Callback untuk GET /tasks
+ * TODO: ISI LOGIKA ANDA DI SINI
+ */
+function umh_get_tasks(WP_REST_Request $request) {
+    global $wpdb;
+    $table_name = $wpdb->prefix . 'umh_tasks';
+
+    // TODO: Tulis logika query Anda di sini.
+    // Contoh: $results = $wpdb->get_results("SELECT * FROM $table_name");
+    // return new WP_REST_Response($results, 200);
+
+    return new WP_REST_Response(['message' => 'Fungsi umh_get_tasks belum diimplementasi.'], 501);
 }
 
-function handle_update_task($id, $data) {
-    global $wpdb, $table_name;
-    $update_data = array(
-        'task_name' => sanitize_text_field($data['task_name']),
-        'description' => sanitize_textarea_field($data['description']),
-        'status' => in_array($data['status'], array('pending', 'in_progress', 'completed')) ? $data['status'] : 'pending',
-        'assigned_to_user_id' => !empty($data['assigned_to_user_id']) ? intval($data['assigned_to_user_id']) : null,
-    );
-    $formats = array('%s', '%s', '%s', '%d');
-    $where = array('id' => $id);
-    $where_format = array('%d');
-    $result = $wpdb->update($table_name, $update_data, $where, $formats, $where_format);
+/**
+ * Callback untuk POST /tasks
+ * TODO: ISI LOGIKA ANDA DI SINI
+ */
+function umh_create_task(WP_REST_Request $request) {
+    global $wpdb;
+    $table_name = $wpdb->prefix . 'umh_tasks';
+    
+    $params = $request->get_json_params();
+    if (empty($params)) $params = $request->get_body_params();
 
-    if ($result === false) {
-        wp_send_json_error(array('message' => 'Gagal mengupdate tugas.', 'db_error' => $wpdb->last_error));
-    } else {
-        $updated_task = $wpdb->get_row($wpdb->prepare("
-            SELECT t.*, u.display_name as assigned_to_name
-            FROM $table_name t
-            LEFT JOIN {$wpdb->prefix}users u ON t.assigned_to_user_id = u.ID
-            WHERE t.id = %d
-        ", $id), ARRAY_A);
-        wp_send_json_success(array('data' => $updated_task));
-    }
+    // TODO: Tulis logika insert Anda di sini.
+    // Contoh:
+    // $data = [
+    //     'task_name' => $params['task_name'],
+    //     'assigned_to_user_id' => $params['assigned_to_user_id'],
+    //     'status' => 'pending',
+    // ];
+    // $format = ['%s', '%d', '%s'];
+    // $wpdb->insert($table_name, $data, $format);
+    // $new_id = $wpdb->insert_id;
+    //
+    // if ($new_id) {
+    //     $new_task = $wpdb->get_row("SELECT * FROM $table_name WHERE id = $new_id");
+    //     return new WP_REST_Response($new_task, 201);
+    // }
+    // return new WP_Error('create_failed', 'Gagal membuat tugas.', ['status' => 500]);
+
+    return new WP_REST_Response(['message' => 'Fungsi umh_create_task belum diimplementasi.'], 501);
 }
 
-function handle_delete_task($id) {
-    global $wpdb, $table_name;
-    $result = $wpdb->delete($table_name, array('id' => $id), array('%d'));
-    if ($result === false) {
-        wp_send_json_error(array('message' => 'Gagal menghapus tugas.', 'db_error' => $wpdb->last_error));
-    } elseif ($result === 0) {
-        wp_send_json_error(array('message' => 'Tugas tidak ditemukan.'), 404);
-    } else {
-        wp_send_json_success(array('message' => 'Tugas berhasil dihapus.'));
-    }
+/**
+ * Callback untuk PUT /tasks/<id>
+ * TODO: ISI LOGIKA ANDA DI SINI
+ */
+function umh_update_task(WP_REST_Request $request) {
+    global $wpdb;
+    $table_name = $wpdb->prefix . 'umh_tasks';
+    $id = $request['id'];
+    
+    $params = $request->get_json_params();
+    if (empty($params)) $params = $request->get_body_params();
+
+    // TODO: Tulis logika update Anda di sini.
+    // Contoh:
+    // $data = [
+    //     'task_name' => $params['task_name'],
+    //     'assigned_to_user_id' => $params['assigned_to_user_id'],
+    //     'status' => $params['status'], // (pending, in_progress, completed)
+    // ];
+    // $where = ['id' => $id];
+    // $format = ['%s', '%d', '%s'];
+    // $where_format = ['%d'];
+    // $wpdb->update($table_name, $data, $where, $format, $where_format);
+    // $updated_task = $wpdb->get_row($wpdb->prepare("SELECT * FROM $table_name WHERE id = %d", $id));
+    // return new WP_REST_Response($updated_task, 200);
+
+    return new WP_REST_Response(['message' => 'Fungsi umh_update_task belum diimplementasi.'], 501);
+}
+
+/**
+ * Callback untuk DELETE /tasks/<id>
+ * TODO: ISI LOGIKA ANDA DI SINI
+ */
+function umh_delete_task(WP_REST_Request $request) {
+    global $wpdb;
+    $table_name = $wpdb->prefix . 'umh_tasks';
+    $id = $request['id'];
+
+    // TODO: Tulis logika delete Anda di sini.
+    // Contoh:
+    // $deleted = $wpdb->delete($table_name, ['id' => $id], ['%d']);
+    // if ($deleted) {
+    //     return new WP_REST_Response(['message' => 'Tugas berhasil dihapus.'], 200);
+    // }
+    // return new WP_Error('delete_failed', 'Gagal menghapus tugas.', ['status' => 500]);
+
+    return new WP_REST_Response(['message' => 'Fungsi umh_delete_task belum diimplementasi.'], 501);
 }
