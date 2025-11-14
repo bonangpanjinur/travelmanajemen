@@ -237,7 +237,7 @@ const CustomLoginForm = ({ onLoginSuccess }) => {
 };
 
 
-// --- [PERBAIKAN] Komponen UI Helper ---
+// --- [PERBAIKAN 1: Modal] Komponen UI Helper ---
 
 const Modal = ({ show, onClose, title, children }) => {
     if (!show) return null;
@@ -257,7 +257,7 @@ const Modal = ({ show, onClose, title, children }) => {
                 onClick={onClose} // Menambahkan fungsi tutup saat overlay diklik
             ></div>
 
-            {/* 3. Panel Modal. Diberi 'relative' dan 'z-10' (atau z-50) agar di atas backdrop */}
+            {/* 3. Panel Modal. Diberi 'relative' dan 'z-10' agar di atas backdrop */}
             <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col relative z-10">
                 {/* Header */}
                 <div className="flex justify-between items-center p-5 border-b">
@@ -274,7 +274,8 @@ const Modal = ({ show, onClose, title, children }) => {
         </div>
     );
 };
-// --- Akhir Perbaikan ---
+
+// --- [PERBAIKAN 2: Form Input] ---
 
 const FormInput = ({ label, value, onChange, type = 'text', required = false, ...props }) => (
     <div>
@@ -282,7 +283,7 @@ const FormInput = ({ label, value, onChange, type = 'text', required = false, ..
         <input
             type={type}
             value={value}
-            onChange={(e) => onChange(e.target.value)}
+            onChange={onChange} // DIPERBAIKI: Langsung pass 'onChange'
             required={required}
             {...props}
             className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
@@ -295,7 +296,7 @@ const FormTextarea = ({ label, value, onChange, ...props }) => (
         <label className="block text-sm font-medium text-gray-700">{label}</label>
         <textarea
             value={value}
-            onChange={(e) => onChange(e.target.value)}
+            onChange={onChange} // DIPERBAIKI: Langsung pass 'onChange'
             {...props}
             rows="3"
             className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
@@ -308,7 +309,7 @@ const FormSelect = ({ label, value, onChange, children, ...props }) => (
         <label className="block text-sm font-medium text-gray-700">{label}</label>
         <select
             value={value}
-            onChange={(e) => onChange(e.target.value)}
+            onChange={onChange} // DIPERBAIKI: Langsung pass 'onChange'
             {...props}
             className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
         >
@@ -842,7 +843,7 @@ const FinanceComponent = () => {
 };
 
 
-// --- [BARU] Halaman Manajemen Tugas ---
+// --- Halaman Manajemen Tugas ---
 const TasksComponent = () => {
     const { api } = useAuth();
     const [tasks, setTasks] = useState([]);
@@ -1154,7 +1155,7 @@ const UsersComponent = () => {
 };
 
 
-// --- [BARU] Navigasi Utama ---
+// --- Navigasi Utama ---
 const MainNav = ({ currentPage, setPage }) => {
     const { user, logout } = useAuth();
     
