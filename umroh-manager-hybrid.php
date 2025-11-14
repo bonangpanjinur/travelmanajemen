@@ -3,7 +3,7 @@
  * Plugin Name: Umroh Manager Hybrid
  * Plugin URI:  https://example.com/
  * Description: Manages Umroh packages, jamaah, finance, and HR with a hybrid WP-Admin and Headless API approach.
- * Version:     1.2.2
+ * Version:     1.2.3
  * Author:      Your Name
  * Author URI:  https://example.com/
  * Text Domain: umh
@@ -44,7 +44,7 @@ foreach ($api_files as $file) {
 require_once UMH_PLUGIN_DIR . 'admin/dashboard-react.php';
 require_once UMH_PLUGIN_DIR . 'admin/settings-page.php';
 
-// --- (PERBAIKAN) HOOKS DIPINDAHKAN KE SINI ---
+// --- HOOKS ---
 
 // 7. Menambahkan Halaman Menu Admin
 function umh_admin_menu() {
@@ -69,7 +69,7 @@ function umh_admin_menu() {
 }
 add_action('admin_menu', 'umh_admin_menu');
 
-// 8. [PERBAIKAN] Inisialisasi Halaman Pengaturan
+// 8. Inisialisasi Halaman Pengaturan
 function umh_settings_init() {
     // Pastikan class-nya sudah di-load
     if (class_exists('UMH_Settings_Page')) {
@@ -83,8 +83,9 @@ add_action('admin_init', 'umh_settings_init'); // Hook yang benar untuk mendafta
 // 9. Enqueue scripts untuk Admin Dashboard React
 function umh_admin_enqueue_scripts($hook) {
     
-    // [PERBAIKAN] Hook harus sesuai dengan slug menu yang dibuat di umh_admin_menu
+    // Hook harus sesuai dengan slug menu yang dibuat di umh_admin_menu
     // 'toplevel_page_' + 'umroh-manager-dashboard'
+    // 'umroh-manager' (nama menu) + '_page_' + 'umh-settings'
     if ('toplevel_page_umroh-manager-dashboard' !== $hook && 'umroh-manager_page_umh-settings' !== $hook) {
         return;
     }
@@ -111,7 +112,9 @@ function umh_admin_enqueue_scripts($hook) {
         // Amankan API untuk WP Admin (Super Admin)
         $current_user = wp_get_current_user();
         if (umh_is_super_admin($current_user)) {
-            wp_localize_script('umh-admin-react-app', 'umhData', [
+            // [PERBAIKAN KUNCI] Nama variabel di sini harus 'umh_wp_data'
+            // agar cocok dengan yang dicari oleh index.jsx.
+            wp_localize_script('umh-admin-react-app', 'umh_wp_data', [
                 'api_url' => esc_url_raw(rest_url('umh/v1/')),
                 'api_nonce' => wp_create_nonce('wp_rest'),
                 'is_wp_admin' => true,
@@ -140,33 +143,31 @@ add_action('admin_enqueue_scripts', 'umh_admin_enqueue_scripts');
 
 // 10. Menyajikan Service Worker untuk PWA
 function umh_serve_service_worker() {
-    // ... (kode PWA tetap sama) ...
+    // Pastikan request ada di root
     if (isset($_SERVER['REQUEST_URI']) && $_SERVER['REQUEST_URI'] === '/service-worker.js') {
         $sw_file = UMH_PLUGIN_DIR . 'pwa/service-worker.js';
-        
         if (file_exists($sw_file)) {
             header('Content-Type: application/javascript');
-            header('Service-Worker-Allowed: /');
+            header('Service-Worker-Allowed: /'); // Izinkan service worker di root
             readfile($sw_file);
-            exit();
+            exit;
         }
     }
     
-    // Juga sajikan manifest.json
+    // Pastikan request ada di root
     if (isset($_SERVER['REQUEST_URI']) && $_SERVER['REQUEST_URI'] === '/manifest.json') {
         $manifest_file = UMH_PLUGIN_DIR . 'pwa/manifest.json';
-        
         if (file_exists($manifest_file)) {
             header('Content-Type: application/json');
             readfile($manifest_file);
-            exit();
+            exit;
         }
     }
 }
-// Hook ke 'init' agar berjalan sebelum WordPress menangani URL
-add_action('init', 'umh_serve_service_worker');
+// Hook 'init' mungkin terlalu cepat, 'parse_request' lebih baik untuk file di root
+add_action('parse_request', 'umh_serve_service_worker');
 
-// 11. [BARU] Inisialisasi CORS
+// 11. Inisialisasi CORS
 function umh_init_cors() {
     if (class_exists('UMH_CORS')) {
         $umh_cors = new UMH_CORS();
