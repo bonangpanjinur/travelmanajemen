@@ -11,12 +11,15 @@ add_action('rest_api_init', 'umh_register_export_routes');
 function umh_register_export_routes() {
     $namespace = 'umh/v1'; // Namespace baru yang konsisten
 
+    // PERBAIKAN: Tentukan izin (baca-saja)
+    $read_permissions = umh_check_api_permission(['owner', 'admin_staff', 'finance_staff', 'marketing_staff', 'hr_staff']);
+
     // Endpoint untuk ekspor data jemaah
     register_rest_route($namespace, '/export/jamaah', [
         [
             'methods' => WP_REST_Server::READABLE,
             'callback' => 'umh_export_jamaah_csv',
-            'permission_callback' => 'umh_check_api_permission', // Keamanan ditambahkan
+            'permission_callback' => $read_permissions, // PERBAIKAN
         ],
     ]);
 }

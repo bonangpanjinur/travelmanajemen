@@ -10,25 +10,30 @@ if (!defined('ABSPATH')) {
 add_action('rest_api_init', function () {
     $namespace = 'umh/v1';
     
+    // PERBAIKAN: Tentukan izin
+    $read_permissions = umh_check_api_permission(['owner', 'admin_staff', 'marketing_staff']);
+    $write_permissions = umh_check_api_permission(['owner', 'admin_staff']);
+    $delete_permissions = umh_check_api_permission(['owner']);
+
     // Rute: /umh/v1/flights (GET)
     register_rest_route($namespace, '/flights', array(
         'methods'             => 'GET',
         'callback'            => 'umh_get_flights',
-        'permission_callback' => 'umh_check_api_permission', // <-- PENGAMAN
+        'permission_callback' => $read_permissions, // <-- PERBAIKAN
     ));
 
     // Rute: /umh/v1/flights (POST)
     register_rest_route($namespace, '/flights', array(
         'methods'             => 'POST',
         'callback'            => 'umh_create_flight',
-        'permission_callback' => 'umh_check_api_permission', // <-- PENGAMAN
+        'permission_callback' => $write_permissions, // <-- PERBAIKAN
     ));
 
     // === TAMBAHAN: Rute Update (PUT) ===
     register_rest_route($namespace, '/flights/(?P<id>\d+)', array(
         'methods'             => 'PUT, POST',
         'callback'            => 'umh_update_flight',
-        'permission_callback' => 'umh_check_api_permission', // <-- PENGAMAN
+        'permission_callback' => $write_permissions, // <-- PERBAIKAN
         'args'                => array('id' => array('validate_callback' => 'is_numeric')),
     ));
 
@@ -36,7 +41,7 @@ add_action('rest_api_init', function () {
     register_rest_route($namespace, '/flights/(?P<id>\d+)', array(
         'methods'             => 'DELETE',
         'callback'            => 'umh_delete_flight',
-        'permission_callback' => 'umh_check_api_permission', // <-- PENGAMAN
+        'permission_callback' => $delete_permissions, // <-- PERBAIKAN
         'args'                => array('id' => array('validate_callback' => 'is_numeric')),
     ));
 });

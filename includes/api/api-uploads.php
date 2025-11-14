@@ -11,12 +11,15 @@ add_action('rest_api_init', 'umh_register_uploads_routes');
 function umh_register_uploads_routes() {
     $namespace = 'umh/v1'; // Namespace baru yang konsisten
 
+    // PERBAIKAN: Izinkan semua role yang login untuk mengupload
+    $permissions = umh_check_api_permission(['owner', 'admin_staff', 'finance_staff', 'marketing_staff', 'hr_staff']);
+
     // Endpoint untuk meng-upload file
     register_rest_route($namespace, '/uploads', [
         [
             'methods' => WP_REST_Server::CREATABLE,
             'callback' => 'umh_handle_rest_upload',
-            'permission_callback' => 'umh_check_api_permission', // Keamanan ditambahkan
+            'permission_callback' => $permissions, // PERBAIKAN
             'args' => [
                 'file' => [
                     'type' => 'file',
@@ -56,7 +59,10 @@ function umh_handle_rest_upload(WP_REST_Request $request) {
     $file = $files['file'];
     
     // Dapatkan ID pengguna yang terautentikasi
-    $user_context = umh_get_current_user_context();
+    $user_context = umh_get_current_user_context($request); // PERBAIKAN: Gunakan $request
+    if (is_wp_error($user_context)) {
+        return $user_context;
+    }
     $user_id = $user_context['user_id'];
 
     // Menangani upload

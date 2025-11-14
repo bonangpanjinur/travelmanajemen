@@ -11,12 +11,15 @@ add_action('rest_api_init', 'umh_register_logs_routes');
 function umh_register_logs_routes() {
     $namespace = 'umh/v1'; // Namespace baru yang konsisten
 
+    // PERBAIKAN: Hanya 'owner' yang boleh melihat log
+    $permissions = umh_check_api_permission(['owner']);
+
     // Endpoint untuk mengambil log
     register_rest_route($namespace, '/logs', [
         [
             'methods' => WP_REST_Server::READABLE,
             'callback' => 'umh_get_logs',
-            'permission_callback' => 'umh_check_api_permission', // Keamanan ditambahkan
+            'permission_callback' => $permissions, // PERBAIKAN
         ],
     ]);
 }

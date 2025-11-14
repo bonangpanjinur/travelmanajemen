@@ -12,6 +12,10 @@ function umh_register_categories_routes() {
     $namespace = 'umh/v1'; // Namespace baru yang konsisten
     $table_name = 'umh_categories'; // Menggunakan tabel UMH yang baru
 
+    // PERBAIKAN: Tentukan izin
+    $permissions = umh_check_api_permission(['owner', 'admin_staff', 'finance_staff']);
+    $read_permissions = umh_check_api_permission(['owner', 'admin_staff', 'finance_staff', 'marketing_staff', 'hr_staff']);
+
     // Endpoint untuk CRUD Kategori
     register_rest_route($namespace, '/categories', [
         [
@@ -19,14 +23,14 @@ function umh_register_categories_routes() {
             'callback' => function(WP_REST_Request $request) use ($table_name) {
                 return umh_get_items($request, $table_name);
             },
-            'permission_callback' => 'umh_check_api_permission', // Keamanan ditambahkan
+            'permission_callback' => $read_permissions, // PERBAIKAN
         ],
         [
             'methods' => WP_REST_Server::CREATABLE,
             'callback' => function(WP_REST_Request $request) use ($table_name) {
                 return umh_create_item($request, $table_name, ['name', 'type']);
             },
-            'permission_callback' => 'umh_check_api_permission', // Keamanan ditambahkan
+            'permission_callback' => $permissions, // PERBAIKAN
         ],
     ]);
 
@@ -37,21 +41,21 @@ function umh_register_categories_routes() {
             'callback' => function(WP_REST_Request $request) use ($table_name) {
                 return umh_get_item_by_id($request, $table_name);
             },
-            'permission_callback' => 'umh_check_api_permission', // Keamanan ditambahkan
+            'permission_callback' => $read_permissions, // PERBAIKAN
         ],
         [
             'methods' => WP_REST_Server::EDITABLE,
             'callback' => function(WP_REST_Request $request) use ($table_name) {
                 return umh_update_item($request, $table_name, ['name', 'type']);
             },
-            'permission_callback' => 'umh_check_api_permission', // Keamanan ditambahkan
+            'permission_callback' => $permissions, // PERBAIKAN
         ],
         [
             'methods' => WP_REST_Server::DELETABLE,
             'callback' => function(WP_REST_Request $request) use ($table_name) {
                 return umh_delete_item($request, $table_name);
             },
-            'permission_callback' => 'umh_check_api_permission', // Keamanan ditambahkan
+            'permission_callback' => $permissions, // PERBAIKAN
         ],
     ]);
 }

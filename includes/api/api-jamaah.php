@@ -11,17 +11,23 @@ add_action('rest_api_init', 'umh_register_jamaah_routes');
 function umh_register_jamaah_routes() {
     $namespace = 'umh/v1'; // Namespace baru yang konsisten
 
+    // Tentukan role yang diizinkan
+    $read_permissions = ['owner', 'admin_staff', 'finance_staff', 'marketing_staff', 'hr_staff'];
+    $write_permissions = ['owner', 'admin_staff'];
+    $delete_permissions = ['owner'];
+    $payment_permissions = ['owner', 'admin_staff', 'finance_staff'];
+
     // Endpoint untuk CRUD Jamaah
     register_rest_route($namespace, '/jamaah', [
         [
             'methods' => WP_REST_Server::READABLE,
             'callback' => 'umh_get_all_jamaah',
-            'permission_callback' => 'umh_check_api_permission',
+            'permission_callback' => umh_check_api_permission($read_permissions), // PERBAIKAN
         ],
         [
             'methods' => WP_REST_Server::CREATABLE,
             'callback' => 'umh_create_jamaah',
-            'permission_callback' => 'umh_check_api_permission',
+            'permission_callback' => umh_check_api_permission($write_permissions), // PERBAIKAN
             'args' => umh_get_jamaah_schema(),
         ],
     ]);
@@ -31,18 +37,18 @@ function umh_register_jamaah_routes() {
         [
             'methods' => WP_REST_Server::READABLE,
             'callback' => 'umh_get_jamaah_by_id',
-            'permission_callback' => 'umh_check_api_permission',
+            'permission_callback' => umh_check_api_permission($read_permissions), // PERBAIKAN
         ],
         [
             'methods' => WP_REST_Server::EDITABLE,
             'callback' => 'umh_update_jamaah',
-            'permission_callback' => 'umh_check_api_permission',
+            'permission_callback' => umh_check_api_permission($write_permissions), // PERBAIKAN
             'args' => umh_get_jamaah_schema(true), // true for update
         ],
         [
             'methods' => WP_REST_Server::DELETABLE,
             'callback' => 'umh_delete_jamaah',
-            'permission_callback' => 'umh_check_api_permission',
+            'permission_callback' => umh_check_api_permission($delete_permissions), // PERBAIKAN
         ],
     ]);
 
@@ -51,7 +57,7 @@ function umh_register_jamaah_routes() {
         [
             'methods' => WP_REST_Server::EDITABLE,
             'callback' => 'umh_update_jamaah_payment',
-            'permission_callback' => 'umh_check_api_permission',
+            'permission_callback' => umh_check_api_permission($payment_permissions), // PERBAIKAN
             'args' => [
                 'payment_status' => [
                     'type' => 'string',

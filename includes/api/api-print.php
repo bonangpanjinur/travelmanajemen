@@ -11,12 +11,15 @@ add_action('rest_api_init', 'umh_register_print_routes');
 function umh_register_print_routes() {
     $namespace = 'umh/v1'; // Namespace baru yang konsisten
 
+    // PERBAIKAN: Tentukan izin (baca-saja)
+    $read_permissions = umh_check_api_permission(['owner', 'admin_staff', 'finance_staff', 'marketing_staff', 'hr_staff']);
+
     // Endpoint untuk print daftar jemaah per paket
     register_rest_route($namespace, '/print/jamaah-list/(?P<id>\d+)', [
         [
             'methods' => WP_REST_Server::READABLE,
             'callback' => 'umh_print_jamaah_list',
-            'permission_callback' => 'umh_check_api_permission', // Keamanan ditambahkan
+            'permission_callback' => $read_permissions, // PERBAIKAN
         ],
     ]);
 }
