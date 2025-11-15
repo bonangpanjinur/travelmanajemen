@@ -4,6 +4,9 @@
  *
  * File BARU untuk mengelola role karyawan dinamis.
  * Menggunakan UMH_CRUD_Controller untuk CRUD pada tabel umh_roles.
+ *
+ * [CATATAN]: File ini sudah benar. Perbaikan pada class-umh-crud-controller.php
+ * akan membuat baris 'new UMH_CRUD_Controller' di bawah ini berfungsi.
  */
 
 if (!defined('ABSPATH')) {
@@ -26,5 +29,6 @@ $permissions = [
 ];
 
 // 3. Inisialisasi Controller
-// Ini secara otomatis membuat endpoint: /wp-json/umh/v1/roles
+// Ini akan membuat endpoint: /wp-json/umh/v1/roles
+// Constructor di UMH_CRUD_Controller akan otomatis mendaftarkan rute.
 new UMH_CRUD_Controller('roles', 'umh_roles', $schema, $permissions);

@@ -4,13 +4,9 @@
  *
  * Mengelola endpoint untuk CRUD pengguna (staff) dan otentikasi.
  *
- * [PERBAIKAN 15/11/2025]:
- * - Memperbaiki Fatal Error ArgumentCountError.
- * - Mengubah pemanggilan UMH_CRUD_Controller agar sesuai
- * dengan constructor baru (resource, table_slug, schema, permissions).
- * - Menghapus pemanggilan `$controller->register_routes()`
- * karena sudah ditangani di dalam constructor class.
- * - Menggunakan `add_filter` untuk hooks `before_create` / `before_update`.
+ * [CATATAN]: File ini sudah benar. Perbaikan pada class-umh-crud-controller.php
+ * akan membuat baris 'new UMH_CRUD_Controller' dan filter 'add_filter'
+ * di bawah ini berfungsi.
  */
 
 if (!defined('ABSPATH')) {
@@ -23,7 +19,7 @@ function umh_register_users_routes() {
     $namespace = 'umh/v1';
     $base = 'users';
 
-    // === PERBAIKAN: Definisikan schema dan permissions di luar ===
+    // === Definisikan schema dan permissions ===
     $users_schema = [
         'email'       => ['type' => 'string', 'required' => true, 'format' => 'email', 'sanitize_callback' => 'sanitize_email'],
         'full_name'   => ['type' => 'string', 'required' => true, 'sanitize_callback' => 'sanitize_text_field'],
@@ -44,12 +40,12 @@ function umh_register_users_routes() {
     // Kolom yang dapat dicari
     $searchable_fields = ['full_name', 'email', 'phone'];
 
-    // === PERBAIKAN: Gunakan add_filter untuk memodifikasi data ===
+    // === Gunakan add_filter untuk memodifikasi data ===
     // Nama hook-nya: "umh_crud_{$resource_name}_before_create"
     add_filter("umh_crud_{$base}_before_create", 'umh_hash_password_on_create', 10, 2);
     add_filter("umh_crud_{$base}_before_update", 'umh_hash_password_on_update', 10, 2);
 
-    // === PERBAIKAN: Panggil constructor baru ===
+    // === Panggil constructor baru ===
     new UMH_CRUD_Controller(
         $base,               // 'users'
         'umh_users',         // $table_slug
@@ -58,9 +54,6 @@ function umh_register_users_routes() {
         $searchable_fields   // $searchable_fields
     );
     
-    // === DIHAPUS: $controller->register_routes($namespace, $base); ===
-    // Pemanggilan register_routes() sudah otomatis di dalam constructor.
-
     // Rute Otentikasi (ini tetap)
     register_rest_route($namespace, '/auth/login', [
         'methods' => 'POST',
@@ -84,7 +77,6 @@ function umh_register_users_routes() {
 
 /**
  * Hash password sebelum insert ke DB
- * [PERBAIKAN]: Fungsi ini adalah filter, harus me-return $data
  */
 function umh_hash_password_on_create($data, $request) {
     if (isset($data['password']) && !empty($data['password'])) {
@@ -96,7 +88,6 @@ function umh_hash_password_on_create($data, $request) {
 
 /**
  * Hash password jika diupdate
- * [PERBAIKAN]: Fungsi ini adalah filter, harus me-return $data
  */
 function umh_hash_password_on_update($data, $request) {
     if (isset($data['password']) && !empty($data['password'])) {
@@ -128,7 +119,6 @@ function umh_auth_login(WP_REST_Request $request) {
         return new WP_Error('invalid_email', 'Email tidak ditemukan.', ['status' => 403]);
     }
     
-    // Pastikan kolom password_hash ada
     if (!isset($user->password_hash)) {
          return new WP_Error('user_misconfigured', 'Konfigurasi user salah (hash tidak ada).', ['status' => 500]);
     }
@@ -141,7 +131,6 @@ function umh_auth_login(WP_REST_Request $request) {
         return new WP_Error('user_inactive', 'Akun Anda tidak aktif.', ['status' => 403]);
     }
 
-    // Buat token
     $token_data = umh_generate_auth_token($user->id, $user->role);
 
     return new WP_REST_Response([
@@ -158,14 +147,12 @@ function umh_auth_login(WP_REST_Request $request) {
 
 /**
  * Callback untuk POST /auth/wp-login (Admin Login)
- * Ini dipanggil oleh React jika user adalah WP Admin
  */
 function umh_auth_wp_admin_login(WP_REST_Request $request) {
     if (!current_user_can('manage_options')) {
         return new WP_Error('not_admin', 'Hanya administrator yang bisa menggunakan endpoint ini.', ['status' => 403]);
     }
 
-    // Panggil fungsi dari file utama (umroh-manager-hybrid.php)
     $user_data_for_react = umh_get_current_user_data_for_react(); 
 
     if (empty($user_data_for_react['token'])) {
@@ -174,36 +161,26 @@ function umh_auth_wp_admin_login(WP_REST_Request $request) {
 
     return new WP_REST_Response([
         'user' => [
-            'id' => $user_data_for_react['id'], // Ini akan jadi umh_user id
+            'id' => $user_data_for_react['id'], 
             'email' => $user_data_for_react['email'],
             'full_name' => $user_data_for_react['name'],
             'role' => $user_data_for_react['role'],
         ],
         'token' => $user_data_for_react['token'],
-        'expires' => (new DateTime('+1 hour'))->format('Y-m-d H:i:s'), // Cocokkan dengan file utama
+        'expires' => (new DateTime('+1 hour'))->format('Y-m-d H:i:s'),
     ], 200);
 }
 
 /**
- * [PERBAIKAN] Callback untuk GET /me (verifikasi token)
- * Mengambil data user berdasarkan token yang valid.
+ * Callback untuk GET /me (verifikasi token)
  */
 function umh_get_current_user_by_token(WP_REST_Request $request) {
-    // Fungsi umh_check_api_permission sudah memvalidasi token.
-    // Kita hanya perlu mengambil data user dari context yang disisipkan.
     $context = umh_get_current_user_context($request);
 
     if (is_wp_error($context)) {
-        return $context; // Token invalid, expired, dll.
+        return $context; 
     }
 
-    // === BLOK YANG DIPERBAIKI (DIHAPUS) ===
-    // Blok 'super_admin' yang rusak sebelumnya dihapus.
-    // Logika di bawah ini sudah benar untuk SEMUA user (headless ATAU super_admin),
-    // karena $context['user_id'] berisi ID dari tabel umh_users
-    // yang sudah divalidasi dari token.
-    
-    // Ambil data lengkap dari umh_users
     global $wpdb;
     $table_name = $wpdb->prefix . 'umh_users';
     $user = $wpdb->get_row($wpdb->prepare(
@@ -243,10 +220,9 @@ function umh_generate_auth_token($user_id, $role) {
 }
 
 /**
- * Helper: Verifikasi token
- * Mengembalikan [ 'user_id' => ID, 'role' => ROLE ] jika valid
- * Mengembalikan WP_Error jika tidak valid
- */
+* Helper: Verifikasi token
+* (Fungsi ini tidak lagi digunakan secara langsung, digantikan oleh umh_get_current_user_context)
+*/
 function umh_verify_auth_token($token) {
     global $wpdb;
     $table_name = $wpdb->prefix . 'umh_users';
@@ -264,7 +240,6 @@ function umh_verify_auth_token($token) {
         return new WP_Error('token_invalid', 'Token otentikasi tidak valid.', ['status' => 401]);
     }
 
-    // Cek kadaluarsa
     $now = new DateTime();
     $expires = new DateTime($user->token_expires);
 
