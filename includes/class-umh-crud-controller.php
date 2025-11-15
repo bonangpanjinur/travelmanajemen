@@ -9,6 +9,10 @@
  * - Paginasi (Pagination) via query parameter `?page=...`
  * - Respon dari `get_items` diubah menjadi objek:
  * { data: [...], total_items: X, total_pages: Y, current_page: Z }
+ *
+ * [PERBAIKAN 15/11/2025]:
+ * - Mengganti `do_action` dengan `apply_filters` untuk hook
+ * before_create dan before_update agar bisa memodifikasi data.
  */
 
 if (!defined('ABSPATH')) {
@@ -152,8 +156,8 @@ class UMH_CRUD_Controller {
         $prepared_data['created_at'] = current_time('mysql');
         $prepared_data['updated_at'] = current_time('mysql');
         
-        // Hook sebelum create
-        do_action("umh_crud_{$this->resource_name}_before_create", $request, $prepared_data);
+        // PERBAIKAN: Gunakan apply_filters untuk mengizinkan modifikasi data
+        $prepared_data = apply_filters("umh_crud_{$this->resource_name}_before_create", $prepared_data, $request);
 
         $result = $wpdb->insert($this->table_name, $prepared_data);
 
@@ -192,8 +196,8 @@ class UMH_CRUD_Controller {
         // Update updated_at
         $prepared_data['updated_at'] = current_time('mysql');
         
-        // Hook sebelum update
-        do_action("umh_crud_{$this->resource_name}_before_update", $request, $prepared_data, $id, $existing_item);
+        // PERBAIKAN: Gunakan apply_filters untuk mengizinkan modifikasi data
+        $prepared_data = apply_filters("umh_crud_{$this->resource_name}_before_update", $prepared_data, $request, $id, $existing_item);
 
         $result = $wpdb->update($this->table_name, $prepared_data, ['id' => $id]);
 

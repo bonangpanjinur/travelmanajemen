@@ -1,20 +1,22 @@
 /**
  * File: src/index.jsx
  *
- * MODIFIKASI BESAR:
- * 1. `PackagesComponent`:
- * - `fetchPackageDependencies` sekarang juga mengambil `flights` dan `hotels`.
- * - `defaultState` diubah untuk harga dinamis (`prices: []`) dan relasi (`flight_ids: []`, `hotel_bookings: []`).
- * - Form Modal dirombak total untuk mendukung input dinamis harga, pesawat, dan hotel.
- * - State baru (`priceFields`, `hotelFields`) ditambahkan untuk mengelola form dinamis.
- * - `handleEdit` disesuaikan untuk mengisi form dinamis dari data API yang baru.
- * - `handleSubmit` disesuaikan untuk mengirim data relasi yang baru.
- * 2. `JamaahComponent`:
- * - `fetchJamaahDependencies`: Mengubah cara menampilkan harga paket di dropdown.
+ * MODIFIKASI 15/11/2025:
+ * 1. Import ikon dari `lucide-react`.
+ * 2. Mengganti `AppHeader` dengan versi baru (latar belakang biru).
+ * 3. Mengganti `StatCard` dengan versi baru (menggunakan ikon).
+ * 4. Memperbarui `DashboardComponent` untuk mengirimkan ikon ke `StatCard`.
+ *
+ * PERBAIKAN 15/11/2025 (v2):
+ * 1. Mengganti import `render` dari `@wordpress/element` menjadi `ReactDOM`.
+ * 2. Menggunakan `ReactDOM.render` untuk render aplikasi.
+ * 3. Memperbaiki ID elemen root kembali ke `umh-react-app`.
  */
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { render } from '@wordpress/element';
+import ReactDOM from 'react-dom'; // PERBAIKAN: Import ReactDOM
+// PERBAIKAN: Import ikon
+import { Users, Package, DollarSign, UserCheck } from 'lucide-react';
 
 // --- Komponen UI Utility (Tidak Berubah) ---
 
@@ -400,6 +402,21 @@ const CrudTable = ({ columns, data, onEdit, onDelete }) => (
 // --- Komponen Halaman (Dashboard, Paket, dll.) ---
 
 // 1. Dashboard
+// PERBAIKAN: StatCard baru dengan ikon
+const StatCard = ({ title, value, icon, colorClass }) => (
+    <div className={`bg-white p-6 rounded-lg shadow-lg border-l-4 ${colorClass.replace('text', 'border')} flex items-center space-x-4 transition-all hover:shadow-xl`}>
+        <div className={`p-3 rounded-full ${colorClass} ${colorClass.replace('text', 'bg')}/10`}>
+            {React.cloneElement(icon, { className: `w-6 h-6 ${colorClass}` })}
+        </div>
+        <div>
+            <h3 className="text-sm font-medium text-gray-500 uppercase">{title}</h3>
+            <p className="mt-1 text-3xl font-semibold text-gray-900">{value}</p>
+        </div>
+    </div>
+);
+
+
+// PERBAIKAN: DashboardComponent baru
 const DashboardComponent = () => {
     const [stats, setStats] = useState(null);
     const [loading, setLoading] = useState(true);
@@ -424,28 +441,39 @@ const DashboardComponent = () => {
     if (loading) return <Spinner />;
     if (error) return <Alert message={`Gagal memuat statistik: ${error}`} />;
     
-    // Perbaikan: Gunakan data dari /stats/totals
     const { total_jamaah, total_packages, total_revenue } = stats || {};
-    
-    // Cek stats/jamaah (dari kode lama)
-    const total_jamaah_lunas = stats?.total_jamaah_lunas || 0; // Asumsi ini ada di /stats/totals
+    const total_jamaah_lunas = stats?.total_jamaah_lunas || 0;
 
     return (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            <StatCard title="Total Jemaah" value={total_jamaah || 0} />
-            <StatCard title="Total Paket" value={total_packages || 0} />
-            <StatCard title="Total Pemasukan" value={formatCurrency(total_revenue || 0)} />
-            <StatCard title="Jemaah Lunas" value={total_jamaah_lunas} />
+            <StatCard 
+                title="Total Jemaah" 
+                value={total_jamaah || 0} 
+                icon={<Users />} 
+                colorClass="text-blue-600"
+            />
+            <StatCard 
+                title="Total Paket" 
+                value={total_packages || 0} 
+                icon={<Package />}
+                colorClass="text-indigo-600"
+            />
+            <StatCard 
+                title="Total Pemasukan" 
+                value={formatCurrency(total_revenue || 0)} 
+                icon={<DollarSign />}
+                colorClass="text-green-600"
+            />
+            <StatCard 
+                title="Jemaah Lunas" 
+                value={total_jamaah_lunas} 
+                icon={<UserCheck />}
+                colorClass="text-teal-600"
+            />
         </div>
     );
 };
 
-const StatCard = ({ title, value }) => (
-    <div className="bg-white p-6 rounded-lg shadow-md">
-        <h3 className="text-sm font-medium text-gray-500 uppercase">{title}</h3>
-        <p className="mt-2 text-3xl font-semibold text-gray-900">{value}</p>
-    </div>
-);
 
 // 2. Manajemen Paket (MODIFIKASI BESAR)
 const PackagesComponent = () => {
@@ -1756,16 +1784,17 @@ const RolesComponent = () => {
 // --- Komponen Utama Aplikasi (Navigasi & Router) ---
 
 // Header
+// PERBAIKAN: Header baru dengan latar belakang biru
 const AppHeader = ({ user, onLogout }) => (
-    <header className="bg-white shadow-md">
+    <header className="bg-blue-700 text-white shadow-lg">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="flex justify-between items-center h-16">
                 <div className="flex-shrink-0">
-                    <span className="text-2xl font-bold text-blue-600">Travel</span>
-                    <span className="text-2xl font-bold text-gray-700">Manajemen</span>
+                    <span className="text-2xl font-bold text-white">Travel</span>
+                    <span className="text-2xl font-bold text-blue-200">Manajemen</span>
                 </div>
-                <div className="text-sm text-gray-600">
-                    Selamat datang, <span className="font-medium text-gray-800">{user.name || 'Pengguna'}</span>
+                <div className="text-sm text-blue-100">
+                    Selamat datang, <span className="font-medium text-white">{user.name || 'Pengguna'}</span>
                 </div>
             </div>
         </div>
@@ -1962,10 +1991,10 @@ const App = () => {
 // Render aplikasi React ke DOM
 document.addEventListener('DOMContentLoaded', () => {
     // MODIFIKASI: Target ID yang benar
-    const appRoot = document.getElementById('umh-react-app-root');
+    const appRoot = document.getElementById('umh-react-app'); // PERBAIKAN: ID dikembalikan ke 'umh-react-app'
     if (appRoot) {
-        render(<App />, appRoot);
+        ReactDOM.render(<App />, appRoot); // PERBAIKAN: Gunakan ReactDOM.render
     } else {
-        console.error("Target div 'umh-react-app-root' not found.");
+        console.error("Target div 'umh-react-app' not found."); // PERBAIKAN: Pesan error disesuaikan
     }
 });

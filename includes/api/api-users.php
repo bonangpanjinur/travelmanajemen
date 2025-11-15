@@ -4,8 +4,13 @@
  *
  * Mengelola endpoint untuk CRUD pengguna (staff) dan otentikasi.
  *
- * [PERBAIKAN 15/11/2025]: Memperbaiki fungsi umh_get_current_user_by_token
- * agar tidak salah mengambil data 'super_admin'.
+ * [PERBAIKAN 15/11/2025]:
+ * - Memperbaiki Fatal Error ArgumentCountError.
+ * - Mengubah pemanggilan UMH_CRUD_Controller agar sesuai
+ * dengan constructor baru (resource, table_slug, schema, permissions).
+ * - Menghapus pemanggilan `$controller->register_routes()`
+ * karena sudah ditangani di dalam constructor class.
+ * - Menggunakan `add_filter` untuk hooks `before_create` / `before_update`.
  */
 
 if (!defined('ABSPATH')) {
@@ -18,25 +23,45 @@ function umh_register_users_routes() {
     $namespace = 'umh/v1';
     $base = 'users';
 
-    // Rute CRUD
-    $controller = new UMH_CRUD_Controller('umh_users', [
-        'schema' => [
-            'email' => ['type' => 'string', 'required' => true, 'format' => 'email'],
-            'full_name' => ['type' => 'string', 'required' => true],
-            'role' => ['type' => 'string', 'required' => true],
-            'phone' => ['type' => 'string'],
-            'status' => ['type' => 'string', 'default' => 'active'],
-            'password' => ['type' => 'string'], // Hanya untuk create/update
-        ],
-        'read_permission' => umh_check_api_permission(['owner', 'admin_staff', 'hr_staff']),
-        'write_permission' => umh_check_api_permission(['owner', 'admin_staff']),
-        'delete_permission' => umh_check_api_permission(['owner']),
-        'before_create' => 'umh_hash_password_before_create',
-        'before_update' => 'umh_hash_password_before_update',
-    ]);
-    $controller->register_routes($namespace, $base);
+    // === PERBAIKAN: Definisikan schema dan permissions di luar ===
+    $users_schema = [
+        'email'       => ['type' => 'string', 'required' => true, 'format' => 'email', 'sanitize_callback' => 'sanitize_email'],
+        'full_name'   => ['type' => 'string', 'required' => true, 'sanitize_callback' => 'sanitize_text_field'],
+        'role'        => ['type' => 'string', 'required' => true, 'sanitize_callback' => 'sanitize_text_field'],
+        'phone'       => ['type' => 'string', 'required' => false, 'sanitize_callback' => 'sanitize_text_field'],
+        'status'      => ['type' => 'string', 'default' => 'active', 'sanitize_callback' => 'sanitize_text_field'],
+        'password'    => ['type' => 'string', 'required' => false], // Hanya untuk create/update, tidak disanitasi karena akan di-hash
+    ];
 
-    // Rute Otentikasi
+    $users_permissions = [
+        'get_items'    => ['owner', 'admin_staff', 'hr_staff'],
+        'get_item'     => ['owner', 'admin_staff', 'hr_staff'],
+        'create_item'  => ['owner', 'admin_staff'],
+        'update_item'  => ['owner', 'admin_staff'],
+        'delete_item'  => ['owner'],
+    ];
+
+    // Kolom yang dapat dicari
+    $searchable_fields = ['full_name', 'email', 'phone'];
+
+    // === PERBAIKAN: Gunakan add_filter untuk memodifikasi data ===
+    // Nama hook-nya: "umh_crud_{$resource_name}_before_create"
+    add_filter("umh_crud_{$base}_before_create", 'umh_hash_password_on_create', 10, 2);
+    add_filter("umh_crud_{$base}_before_update", 'umh_hash_password_on_update', 10, 2);
+
+    // === PERBAIKAN: Panggil constructor baru ===
+    new UMH_CRUD_Controller(
+        $base,               // 'users'
+        'umh_users',         // $table_slug
+        $users_schema,       // $schema
+        $users_permissions,  // $permissions
+        $searchable_fields   // $searchable_fields
+    );
+    
+    // === DIHAPUS: $controller->register_routes($namespace, $base); ===
+    // Pemanggilan register_routes() sudah otomatis di dalam constructor.
+
+    // Rute Otentikasi (ini tetap)
     register_rest_route($namespace, '/auth/login', [
         'methods' => 'POST',
         'callback' => 'umh_auth_login',
@@ -49,7 +74,7 @@ function umh_register_users_routes() {
         'permission_callback' => 'is_user_logged_in', // Hanya untuk WP Admin
     ]);
 
-    // Rute /me
+    // Rute /me (ini tetap)
     register_rest_route($namespace, '/' . $base . '/me', [
         'methods' => 'GET',
         'callback' => 'umh_get_current_user_by_token',
@@ -59,27 +84,26 @@ function umh_register_users_routes() {
 
 /**
  * Hash password sebelum insert ke DB
+ * [PERBAIKAN]: Fungsi ini adalah filter, harus me-return $data
  */
-function umh_hash_password_before_create($data) {
-    if (isset($data['password'])) {
+function umh_hash_password_on_create($data, $request) {
+    if (isset($data['password']) && !empty($data['password'])) {
         $data['password_hash'] = wp_hash_password($data['password']);
-        unset($data['password']); // Hapus password plaintext
     }
-    $data['created_at'] = current_time('mysql');
-    $data['updated_at'] = current_time('mysql');
-    return $data;
+    unset($data['password']); // Hapus password plaintext
+    return $data; // Kembalikan data yang sudah dimodifikasi
 }
 
 /**
  * Hash password jika diupdate
+ * [PERBAIKAN]: Fungsi ini adalah filter, harus me-return $data
  */
-function umh_hash_password_before_update($data) {
+function umh_hash_password_on_update($data, $request) {
     if (isset($data['password']) && !empty($data['password'])) {
         $data['password_hash'] = wp_hash_password($data['password']);
     }
     unset($data['password']); // Hapus password plaintext (kosong atau tidak)
-    $data['updated_at'] = current_time('mysql');
-    return $data;
+    return $data; // Kembalikan data yang sudah dimodifikasi
 }
 
 
@@ -102,6 +126,11 @@ function umh_auth_login(WP_REST_Request $request) {
 
     if (!$user) {
         return new WP_Error('invalid_email', 'Email tidak ditemukan.', ['status' => 403]);
+    }
+    
+    // Pastikan kolom password_hash ada
+    if (!isset($user->password_hash)) {
+         return new WP_Error('user_misconfigured', 'Konfigurasi user salah (hash tidak ada).', ['status' => 500]);
     }
 
     if (!wp_check_password($password, $user->password_hash, $user->id)) {
@@ -173,17 +202,6 @@ function umh_get_current_user_by_token(WP_REST_Request $request) {
     // Logika di bawah ini sudah benar untuk SEMUA user (headless ATAU super_admin),
     // karena $context['user_id'] berisi ID dari tabel umh_users
     // yang sudah divalidasi dari token.
-    /*
-    if ($context['role'] === 'super_admin') {
-         $wp_user = wp_get_current_user(); // <-- INI SUMBER MASALAHNYA
-         return new WP_REST_Response([
-            'id' => $wp_user->ID, 
-            'email' => $wp_user->user_email,
-            'full_name' => $wp_user->display_name,
-            'role' => 'super_admin',
-         ], 200);
-    }
-    */
     
     // Ambil data lengkap dari umh_users
     global $wpdb;
