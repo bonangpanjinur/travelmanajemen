@@ -7,6 +7,10 @@
  * - Membuat endpoint kustom untuk CRUD Paket.
  * - Endpoint GET sekarang me-load data relasi (harga, pesawat, hotel).
  * - Endpoint POST/PUT sekarang menyimpan data relasi ke tabel terkait.
+ *
+ * PERBAIKAN 15/11/2025:
+ * - Mengubah umh_get_packages agar mendukung Paginasi dan Pencarian.
+ * - Mengubah respon agar sesuai standar: { data: [...], total_items: X, ... }
  */
 
 if (!defined('ABSPATH')) {
@@ -176,12 +180,53 @@ function umh_save_package_relations($package_id, $params) {
 
 /**
  * Callback: GET /packages
+ * PERBAIKAN: Ditambahkan logika Paginasi dan Pencarian
  */
 function umh_get_packages(WP_REST_Request $request) {
     global $wpdb;
     $table_name = $wpdb->prefix . 'umh_packages';
-    
-    $packages = $wpdb->get_results("SELECT * FROM $table_name", ARRAY_A);
+
+    // Paginasi
+    $page = (int) $request->get_param('page');
+    $per_page = 20; // Tetapkan jumlah item per halaman
+    if ($page < 1) {
+        $page = 1;
+    }
+    $offset = ($page - 1) * $per_page;
+
+    // Pencarian
+    $search = $request->get_param('search');
+    $where_clauses = [];
+    $query_params = [];
+
+    if (!empty($search)) {
+        $search_like = '%' . $wpdb->esc_like($search) . '%';
+        $where_clauses[] = "(name LIKE %s OR description LIKE %s)";
+        $query_params[] = $search_like;
+        $query_params[] = $search_like;
+    }
+
+    $where_sql = "";
+    if (!empty($where_clauses)) {
+        $where_sql = " WHERE " . implode(' AND ', $where_clauses);
+    }
+
+    // Ambil Total Item (untuk paginasi)
+    $total_query = "SELECT COUNT(id) FROM {$table_name}{$where_sql}";
+    $total_items = (int) $wpdb->get_var(
+        empty($query_params) ? $total_query : $wpdb->prepare($total_query, $query_params)
+    );
+    $total_pages = ceil($total_items / $per_page);
+
+    // Ambil Data Item (dengan limit dan offset)
+    $data_query = "SELECT * FROM {$table_name}{$where_sql} ORDER BY id DESC LIMIT %d OFFSET %d";
+    $query_params[] = $per_page;
+    $query_params[] = $offset;
+
+    $packages = $wpdb->get_results(
+        $wpdb->prepare($data_query, $query_params),
+        ARRAY_A
+    );
     
     if ($packages === false) {
         return new WP_Error('db_error', __('Database error.', 'umh'), ['status' => 500]);
@@ -193,7 +238,15 @@ function umh_get_packages(WP_REST_Request $request) {
         $packages[$key] = array_merge($package, $relations);
     }
 
-    return new WP_REST_Response($packages, 200);
+    // Kembalikan dalam format objek baru
+    $response = [
+        'data'         => $packages,
+        'total_items'  => $total_items,
+        'total_pages'  => $total_pages,
+        'current_page' => $page,
+    ];
+
+    return new WP_REST_Response($response, 200);
 }
 
 /**

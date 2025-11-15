@@ -19,11 +19,11 @@ function umroh_manager_render_dashboard_react() {
     ?>
     <div class="wrap">
         <!-- 
-          PERBAIKAN: ID diubah menjadi 'umh-react-app-root' 
+          PERBAIKAN: ID diubah kembali menjadi 'umh-react-app' 
           agar sesuai dengan yang dicari oleh build/index.js 
           (dari src/index.jsx)
         -->
-        <div id="umh-react-app-root">
+        <div id="umh-react-app">
             <!-- React akan menggantikan konten ini -->
             <p style="padding: 20px; text-align: center;">Memuat aplikasi manajemen...</p>
         </div>

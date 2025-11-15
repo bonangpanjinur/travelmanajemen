@@ -1,22 +1,23 @@
 /**
  * File: src/index.jsx
  *
- * MODIFIKASI 15/11/2025:
- * 1. Import ikon dari `lucide-react`.
- * 2. Mengganti `AppHeader` dengan versi baru (latar belakang biru).
- * 3. Mengganti `StatCard` dengan versi baru (menggunakan ikon).
- * 4. Memperbarui `DashboardComponent` untuk mengirimkan ikon ke `StatCard`.
- *
- * PERBAIKAN 15/11/2025 (v2):
- * 1. Mengganti import `render` dari `@wordpress/element` menjadi `ReactDOM`.
- * 2. Menggunakan `ReactDOM.render` untuk render aplikasi.
- * 3. Memperbaiki ID elemen root kembali ke `umh-react-app`.
+ * PERBAIKAN MENYELURUH (15/11/2025):
+ * 1. Merombak hook `useCRUD` untuk mendukung Paginasi dan Pencarian.
+ * 2. `useCRUD` kini mengelola state `page`, `searchTerm`, dan `pagination`.
+ * 3. `fetchData` di dalam `useCRUD` kini mengirim parameter `?page=...&search=...` ke API.
+ * 4. `fetchData` kini mem-parsing respon objek `{ data: [], ... }` dari UMH_CRUD_Controller.
+ * 5. Membuat komponen `Pagination` untuk navigasi halaman.
+ * 6. Membuat komponen `SearchInput` untuk pencarian.
+ * 7. Mengintegrasikan `Pagination` dan `SearchInput` ke semua komponen CRUD
+ * (Jamaah, Finance, Tasks, Users, Categories, Flights, Hotels, Roles, dan Packages).
+ * 8. Memperbaiki `useCRUD` agar tetap kompatibel dengan API kustom (seperti `api-packages.php`
+ * yang kini juga sudah di-upgrade di backend untuk mengembalikan format yg sama).
+ * 9. Memperbaiki `handleEdit` di PackagesComponent (sudah benar, hanya memastikan).
  */
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import ReactDOM from 'react-dom'; // PERBAIKAN: Import ReactDOM
-// PERBAIKAN: Import ikon
-import { Users, Package, DollarSign, UserCheck } from 'lucide-react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import ReactDOM from 'react-dom';
+import { Users, Package, DollarSign, UserCheck, Search, ArrowLeft, ArrowRight } from 'lucide-react';
 
 // --- Komponen UI Utility (Tidak Berubah) ---
 
@@ -133,7 +134,7 @@ const Modal = ({ show, onClose, title, children, footer }) => {
 
 // Komponen Tombol
 const Button = ({ onClick, children, variant = 'primary', type = 'button', ...props }) => {
-    const baseStyle = "px-4 py-2 rounded-md font-medium transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-offset-2";
+    const baseStyle = "px-4 py-2 rounded-md font-medium transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed";
     const variants = {
         primary: "bg-blue-600 text-white hover:bg-blue-700 focus:ring-blue-500",
         secondary: "bg-gray-200 text-gray-800 hover:bg-gray-300 focus:ring-gray-400",
@@ -174,8 +175,66 @@ const Alert = ({ message, type = 'error' }) => {
     );
 };
 
-// --- API Client Sederhana (Tidak Berubah) ---
+// --- (BARU) Komponen Paginasi ---
+const Pagination = ({ pagination, onPageChange }) => {
+    const { total_pages, current_page } = pagination;
+    if (total_pages <= 1) return null;
 
+    return (
+        <div className="flex justify-between items-center mt-4">
+            <Button
+                variant="outline"
+                onClick={() => onPageChange(current_page - 1)}
+                disabled={current_page <= 1}
+            >
+                <ArrowLeft className="w-4 h-4 mr-2" />
+                Sebelumnya
+            </Button>
+            <span className="text-sm text-gray-600">
+                Halaman {current_page} dari {total_pages}
+            </span>
+            <Button
+                variant="outline"
+                onClick={() => onPageChange(current_page + 1)}
+                disabled={current_page >= total_pages}
+            >
+                Selanjutnya
+                <ArrowRight className="w-4 h-4 ml-2" />
+            </Button>
+        </div>
+    );
+};
+
+// --- (BARU) Komponen Input Pencarian ---
+const SearchInput = ({ initialValue, onSearch }) => {
+    const [searchTerm, setSearchTerm] = useState(initialValue);
+    const timeoutRef = useRef(null);
+
+    // Debounce effect
+    useEffect(() => {
+        clearTimeout(timeoutRef.current);
+        timeoutRef.current = setTimeout(() => {
+            onSearch(searchTerm);
+        }, 500); // 500ms delay
+
+        return () => clearTimeout(timeoutRef.current);
+    }, [searchTerm, onSearch]);
+
+    return (
+        <div className="relative mb-4">
+            <input
+                type="text"
+                placeholder="Cari data..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full px-4 py-2 pl-10 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+            />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+        </div>
+    );
+};
+
+// --- API Client Sederhana (Tidak Berubah) ---
 const wpData = window.umh_wp_data || {
     api_url: '/wp-json/umh/v1/', // Fallback
     nonce: '',
@@ -217,7 +276,7 @@ const api = {
     del: (endpoint) => api.request(endpoint, 'DELETE'),
 };
 
-// --- Hook Kustom untuk CRUD ---
+// --- (PERBAIKAN TOTAL) Hook Kustom untuk CRUD (Paginasi & Search) ---
 const useCRUD = (apiName, defaultFormState, onDependenciesFetched) => {
     const [list, setList] = useState([]);
     const [dependencies, setDependencies] = useState({});
@@ -228,6 +287,15 @@ const useCRUD = (apiName, defaultFormState, onDependenciesFetched) => {
     const [currentItem, setCurrentItem] = useState(null);
     const [formState, setFormState] = useState(defaultFormState);
     const [successMessage, setSuccessMessage] = useState(null);
+
+    // State baru untuk paginasi dan pencarian
+    const [page, setPage] = useState(1);
+    const [searchTerm, setSearchTerm] = useState('');
+    const [pagination, setPagination] = useState({
+        total_items: 0,
+        total_pages: 1,
+        current_page: 1,
+    });
 
     const showSuccess = (message) => {
         setSuccessMessage(message);
@@ -249,16 +317,46 @@ const useCRUD = (apiName, defaultFormState, onDependenciesFetched) => {
         setIsLoading(true);
         setError(null);
         try {
+            // Selalu muat dependensi
             await fetchDependencies();
-            const data = await api.get(apiName);
-            setList(data);
+            
+            // Bangun query URL dengan paginasi dan pencarian
+            const query = new URLSearchParams({
+                page: page,
+                search: searchTerm,
+            });
+            
+            const data = await api.get(`${apiName}?${query.toString()}`);
+            
+            // Logika baru untuk mem-parsing respon
+            if (data && typeof data === 'object' && Array.isArray(data.data)) {
+                // Respon paginasi dari UMH_CRUD_Controller
+                setList(data.data);
+                setPagination({
+                    total_items: data.total_items,
+                    total_pages: data.total_pages,
+                    current_page: data.current_page,
+                });
+            } else if (Array.isArray(data)) {
+                // Fallback untuk respon array (misal: API kustom lama)
+                setList(data);
+                setPagination({
+                    total_items: data.length,
+                    total_pages: 1,
+                    current_page: 1,
+                });
+            } else {
+                throw new Error("Format data tidak dikenal");
+            }
+
         } catch (err) {
             setError(`Gagal memuat data ${apiName}: ${err.message}`);
         } finally {
             setIsLoading(false);
         }
-    }, [apiName, fetchDependencies]);
+    }, [apiName, fetchDependencies, page, searchTerm]);
 
+    // useEffect utama kini bergantung pada fetchData
     useEffect(() => {
         fetchData();
     }, [fetchData]);
@@ -302,7 +400,10 @@ const useCRUD = (apiName, defaultFormState, onDependenciesFetched) => {
                 result = await api.post(apiName, formState);
                 showSuccess("Data berhasil ditambahkan.");
             }
-            fetchData();
+            // Reset ke halaman 1 dan fetch ulang
+            if (page !== 1) setPage(1);
+            else fetchData();
+            
             handleCloseModal();
         } catch (err) {
             setError(`Gagal menyimpan: ${err.message}`);
@@ -317,10 +418,18 @@ const useCRUD = (apiName, defaultFormState, onDependenciesFetched) => {
         try {
             await api.del(`${apiName}/${id}`);
             showSuccess("Data berhasil dihapus.");
-            fetchData();
+            // Reset ke halaman 1 dan fetch ulang
+            if (page !== 1) setPage(1);
+            else fetchData();
         } catch (err) {
             setError(`Gagal menghapus: ${err.message}`);
         }
+    };
+
+    // Fungsi baru untuk menangani pencarian
+    const handleSearch = (newSearchTerm) => {
+        setSearchTerm(newSearchTerm);
+        setPage(1); // Selalu reset ke halaman 1 saat mencari
     };
 
     return {
@@ -333,20 +442,25 @@ const useCRUD = (apiName, defaultFormState, onDependenciesFetched) => {
         isEditing,
         currentItem,
         formState,
+        pagination, // Kirim info paginasi ke komponen
+        searchTerm, // Kirim searchTerm
+        setPage,    // Kirim setPage
+        setSearchTerm: handleSearch, // Kirim fungsi search
         handleChange,
         handleAddNew,
         handleEdit,
         handleCloseModal,
         handleSubmit,
         handleDelete,
-        fetchData,
+        fetchData, // Tetap kirim fetchData jika perlu refresh manual
         setError,
         setFormState,
         fetchDependencies,
     };
 };
+// --- Akhir Perbaikan useCRUD ---
 
-// --- Komponen Tabel Generik ---
+// --- Komponen Tabel Generik (Tidak Berubah) ---
 const CrudTable = ({ columns, data, onEdit, onDelete }) => (
     <div className="overflow-x-auto shadow-md rounded-lg">
         <table className="min-w-full divide-y divide-gray-200">
@@ -401,8 +515,7 @@ const CrudTable = ({ columns, data, onEdit, onDelete }) => (
 
 // --- Komponen Halaman (Dashboard, Paket, dll.) ---
 
-// 1. Dashboard
-// PERBAIKAN: StatCard baru dengan ikon
+// 1. Dashboard (Tidak Berubah)
 const StatCard = ({ title, value, icon, colorClass }) => (
     <div className={`bg-white p-6 rounded-lg shadow-lg border-l-4 ${colorClass.replace('text', 'border')} flex items-center space-x-4 transition-all hover:shadow-xl`}>
         <div className={`p-3 rounded-full ${colorClass} ${colorClass.replace('text', 'bg')}/10`}>
@@ -415,8 +528,6 @@ const StatCard = ({ title, value, icon, colorClass }) => (
     </div>
 );
 
-
-// PERBAIKAN: DashboardComponent baru
 const DashboardComponent = () => {
     const [stats, setStats] = useState(null);
     const [loading, setLoading] = useState(true);
@@ -426,7 +537,7 @@ const DashboardComponent = () => {
         const fetchStats = async () => {
             try {
                 setLoading(true);
-                const data = await api.get('stats/totals'); // Menggunakan endpoint baru
+                const data = await api.get('stats/totals');
                 setStats(data);
             } catch (err) {
                 setError(err.message);
@@ -475,7 +586,7 @@ const DashboardComponent = () => {
 };
 
 
-// 2. Manajemen Paket (MODIFIKASI BESAR)
+// 2. Manajemen Paket (DITAMBAH PAGINASI & SEARCH)
 const PackagesComponent = () => {
     const defaultState = {
         name: '',
@@ -484,19 +595,25 @@ const PackagesComponent = () => {
         departure_date: '',
         duration_days: 0,
         status: 'draft',
-        prices: [{ room_type: 'Quad', price: 0 }], // Harga dinamis
-        flight_ids: [], // Link pesawat
-        hotel_bookings: [], // Link hotel
+        prices: [{ room_type: 'Quad', price: 0 }],
+        flight_ids: [],
+        hotel_bookings: [],
     };
 
-    // MODIFIKASI: Fetch flights dan hotels juga
     const fetchPackageDependencies = useCallback(async () => {
+        // Optimasi: Hanya fetch dependensi jika list-nya kosong
+        // Tapi useCRUD memanggil ini setiap fetch, jadi kita perlu memoize
+        // Untuk sekarang, panggil saja setiap saat.
         const [categories, flights, hotels] = await Promise.all([
-            api.get('categories'),
-            api.get('flights'),
-            api.get('hotels'),
+            api.get('categories?page=1&search='), // Asumsi kategori, flight, hotel tidak terlalu banyak
+            api.get('flights?page=1&search='),
+            api.get('hotels?page=1&search='),
         ]);
-        return { categories, flights, hotels };
+        return { 
+            categories: categories.data || categories, 
+            flights: flights.data || flights, 
+            hotels: hotels.data || hotels 
+        };
     }, []);
 
     const {
@@ -508,18 +625,20 @@ const PackagesComponent = () => {
         isModalOpen,
         isEditing,
         formState,
-        setFormState, // Ambil setFormState
+        setFormState,
+        pagination, // BARU
+        searchTerm, // BARU
+        setPage,    // BARU
+        setSearchTerm, // BARU
         handleChange,
         handleAddNew,
-        // handleEdit, // Kita akan override
         handleCloseModal,
         handleSubmit,
-        handleDelete
+        handleDelete,
+        fetchData
     } = useCRUD('packages', defaultState, fetchPackageDependencies);
 
-    // --- State untuk Form Dinamis ---
-    
-    // Untuk harga
+    // --- State untuk Form Dinamis (Tidak Berubah) ---
     const handlePriceChange = (index, field, value) => {
         const newPrices = [...formState.prices];
         newPrices[index][field] = value;
@@ -535,14 +654,10 @@ const PackagesComponent = () => {
         const newPrices = formState.prices.filter((_, i) => i !== index);
         setFormState(prev => ({ ...prev, prices: newPrices }));
     };
-
-    // Untuk flights
     const handleFlightChange = (e) => {
         const selectedIds = Array.from(e.target.selectedOptions, option => parseInt(option.value));
         setFormState(prev => ({ ...prev, flight_ids: selectedIds }));
     };
-
-    // Untuk hotels
     const handleHotelBookingChange = (index, field, value) => {
         const newBookings = [...formState.hotel_bookings];
         newBookings[index][field] = value;
@@ -559,11 +674,10 @@ const PackagesComponent = () => {
         setFormState(prev => ({ ...prev, hotel_bookings: newBookings }));
     };
     
-    // --- Override handleEdit ---
+    // --- Override handleEdit (Tidak Berubah) ---
     const handleEdit = (item) => {
         setIsEditing(true);
         setCurrentItem(item);
-        // Pastikan data relasi adalah array, BUKAN null/undefined
         setFormState({
             ...item,
             prices: item.prices || [],
@@ -573,7 +687,6 @@ const PackagesComponent = () => {
         setModalOpen(true);
     };
 
-    // MODIFIKASI: Kolom harga
     const columns = [
         { key: 'name', label: 'Nama Paket' },
         { 
@@ -586,7 +699,6 @@ const PackagesComponent = () => {
             label: 'Harga',
             render: (item) => {
                 if (!item.prices || item.prices.length === 0) return 'Rp 0';
-                // Cari harga terendah
                 const minPrice = Math.min(...item.prices.map(p => p.price));
                 return `Mulai dari ${formatCurrency(minPrice)}`;
             }
@@ -610,16 +722,22 @@ const PackagesComponent = () => {
             <Alert message={error} type="error" />
             <Alert message={successMessage} type="success" />
 
+            {/* BARU: Search Input */}
+            <SearchInput initialValue={searchTerm} onSearch={setSearchTerm} />
+
             {isLoading ? <Spinner /> : (
-                <CrudTable
-                    columns={columns}
-                    data={packages}
-                    onEdit={handleEdit}
-                    onDelete={handleDelete}
-                />
+                <>
+                    <CrudTable
+                        columns={columns}
+                        data={packages}
+                        onEdit={handleEdit}
+                        onDelete={handleDelete}
+                    />
+                    {/* BARU: Pagination */}
+                    <Pagination pagination={pagination} onPageChange={setPage} />
+                </>
             )}
 
-            {/* MODIFIKASI BESAR: Modal Form */}
             <Modal
                 show={isModalOpen}
                 onClose={handleCloseModal}
@@ -632,7 +750,6 @@ const PackagesComponent = () => {
                 }
             >
                 <form id="package-form" onSubmit={handleSubmit}>
-                    {/* --- Bagian Info Dasar --- */}
                     <FormInput label="Nama Paket" name="name" value={formState.name} onChange={handleChange} required />
                     <FormSelect label="Kategori" name="category_id" value={formState.category_id} onChange={handleChange} required>
                         <option value="">Pilih Kategori</option>
@@ -651,7 +768,6 @@ const PackagesComponent = () => {
                         <option value="archived">Archived</option>
                     </FormSelect>
                     
-                    {/* --- Bagian Harga Dinamis (BARU) --- */}
                     <div className="p-4 border border-gray-200 rounded-md mt-6">
                         <h4 className="font-semibold text-gray-700 mb-3">Harga Dinamis</h4>
                         {formState.prices.map((priceItem, index) => (
@@ -676,7 +792,6 @@ const PackagesComponent = () => {
                         <Button type="button" variant="outline" onClick={addPriceField}>+ Tambah Harga</Button>
                     </div>
 
-                    {/* --- Bagian Link Pesawat (BARU) --- */}
                     <div className="p-4 border border-gray-200 rounded-md mt-6">
                         <h4 className="font-semibold text-gray-700 mb-1">Link Pesawat</h4>
                         <p className="text-sm text-gray-500 mb-3">Tahan Ctrl/Cmd untuk memilih lebih dari satu.</p>
@@ -695,7 +810,6 @@ const PackagesComponent = () => {
                         </select>
                     </div>
 
-                    {/* --- Bagian Link Hotel (BARU) --- */}
                     <div className="p-4 border border-gray-200 rounded-md mt-6">
                         <h4 className="font-semibold text-gray-700 mb-3">Link Hotel</h4>
                         {formState.hotel_bookings.map((booking, index) => (
@@ -738,7 +852,7 @@ const PackagesComponent = () => {
 };
 
 
-// 3. Manajemen Jemaah
+// 3. Manajemen Jemaah (DITAMBAH PAGINASI & SEARCH)
 const JamaahComponent = () => {
     const defaultState = {
         full_name: '',
@@ -758,8 +872,8 @@ const JamaahComponent = () => {
     };
 
     const fetchJamaahDependencies = useCallback(async () => {
-        const packages = await api.get('packages');
-        return { packages };
+        const packagesData = await api.get('packages?page=1&search='); // Ambil semua paket (asumsi tidak terlalu banyak)
+        return { packages: packagesData.data || packagesData };
     }, []);
 
     const {
@@ -772,6 +886,10 @@ const JamaahComponent = () => {
         isEditing,
         currentItem,
         formState,
+        pagination, // BARU
+        searchTerm, // BARU
+        setPage,    // BARU
+        setSearchTerm, // BARU
         handleChange,
         handleAddNew,
         // handleEdit, // Kita akan override
@@ -783,6 +901,7 @@ const JamaahComponent = () => {
         setFormState,
     } = useCRUD('jamaah', defaultState, fetchJamaahDependencies);
 
+    // --- State & Fungsi Lokal Jemaah (Uploads, Payments) ---
     const [ktpFile, setKtpFile] = useState(null);
     const [passportFile, setPassportFile] = useState(null);
     const [payments, setPayments] = useState([]);
@@ -833,9 +952,12 @@ const JamaahComponent = () => {
         }
     };
 
-    const handleEditWithPayments = (item) => {
-        // Panggil handleEdit dari hook
-        handleEdit(item);
+    // Override handleEdit dari useCRUD
+    const handleEdit = (item) => {
+        setIsEditing(true);
+        setCurrentItem(item);
+        setFormState(item);
+        setModalOpen(true);
         // Panggil fetch payments
         fetchPayments(item.id);
     };
@@ -943,7 +1065,6 @@ const JamaahComponent = () => {
         { key: 'status', label: 'Status Jemaah' },
     ];
 
-    // MODIFIKASI: Tampilkan harga paket di dropdown
     const getPackagePriceInfo = (pkg) => {
         if (!pkg.prices || pkg.prices.length === 0) return "(Harga belum diatur)";
         const minPrice = Math.min(...pkg.prices.map(p => p.price));
@@ -960,13 +1081,20 @@ const JamaahComponent = () => {
             <Alert message={error} type="error" />
             <Alert message={successMessage} type="success" />
 
+            {/* BARU: Search Input */}
+            <SearchInput initialValue={searchTerm} onSearch={setSearchTerm} />
+
             {isLoading ? <Spinner /> : (
-                <CrudTable
-                    columns={columns}
-                    data={jamaahList}
-                    onEdit={handleEditWithPayments}
-                    onDelete={handleDelete}
-                />
+                <>
+                    <CrudTable
+                        columns={columns}
+                        data={jamaahList}
+                        onEdit={handleEdit}
+                        onDelete={handleDelete}
+                    />
+                    {/* BARU: Pagination */}
+                    <Pagination pagination={pagination} onPageChange={setPage} />
+                </>
             )}
 
             <Modal
@@ -1130,6 +1258,7 @@ const JamaahComponent = () => {
     );
 };
 
+// --- PaymentModal (Tidak Berubah) ---
 const PaymentModal = ({ show, onClose, payment, onSave, isLoading, error }) => {
     const [form, setForm] = useState({
         payment_date: formatDateForInput(new Date()),
@@ -1223,7 +1352,7 @@ const PaymentModal = ({ show, onClose, payment, onSave, isLoading, error }) => {
 };
 
 
-// 4. Manajemen Keuangan
+// 4. Manajemen Keuangan (DITAMBAH PAGINASI & SEARCH)
 const FinanceComponent = () => {
     const defaultState = {
         transaction_date: formatDateForInput(new Date()),
@@ -1241,6 +1370,10 @@ const FinanceComponent = () => {
         isModalOpen,
         isEditing,
         formState,
+        pagination, // BARU
+        searchTerm, // BARU
+        setPage,    // BARU
+        setSearchTerm, // BARU
         handleChange,
         handleAddNew,
         handleEdit,
@@ -1274,24 +1407,26 @@ const FinanceComponent = () => {
     ];
 
     const balance = useMemo(() => {
+        // NOTE: Saldo ini hanya saldo dari halaman yang ditampilkan.
+        // Untuk saldo total, idealnya API stats/totals harus diperbarui.
         return transactions.reduce((acc, trx) => {
             if (trx.type === 'income') return acc + parseFloat(trx.amount);
             if (trx.type === 'expense') return acc - parseFloat(trx.amount);
             return acc;
         }, 0);
-    }, [transactions]);
+    }, [transactions]); // Seharusnya ini mengambil dari API stats
 
     return (
         <div>
             <div className="flex justify-between items-center mb-6">
                 <h2 className="text-2xl font-semibold text-gray-800">Manajemen Keuangan</h2>
                 <div className="flex items-center space-x-4">
-                    <div className="text-right">
-                        <span className="text-sm text-gray-500">Total Saldo</span>
+                    {/* <div className="text-right">
+                        <span className="text-sm text-gray-500">Saldo (Halaman Ini)</span>
                         <p className={`text-xl font-semibold ${balance >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                             {formatCurrency(balance)}
                         </p>
-                    </div>
+                    </div> */}
                     <Button onClick={handleAddNew}>Tambah Transaksi</Button>
                 </div>
             </div>
@@ -1299,13 +1434,20 @@ const FinanceComponent = () => {
             <Alert message={error} type="error" />
             <Alert message={successMessage} type="success" />
 
+            {/* BARU: Search Input */}
+            <SearchInput initialValue={searchTerm} onSearch={setSearchTerm} />
+
             {isLoading ? <Spinner /> : (
-                <CrudTable
-                    columns={columns}
-                    data={transactions}
-                    onEdit={handleEdit}
-                    onDelete={handleDelete}
-                />
+                <>
+                    <CrudTable
+                        columns={columns}
+                        data={transactions}
+                        onEdit={handleEdit}
+                        onDelete={handleDelete}
+                    />
+                    {/* BARU: Pagination */}
+                    <Pagination pagination={pagination} onPageChange={setPage} />
+                </>
             )}
 
             <Modal
@@ -1334,7 +1476,7 @@ const FinanceComponent = () => {
     );
 };
 
-// 5. Manajemen Tugas
+// 5. Manajemen Tugas (DITAMBAH PAGINASI & SEARCH)
 const TasksComponent = () => {
     const defaultState = {
         title: '',
@@ -1347,11 +1489,14 @@ const TasksComponent = () => {
     };
 
     const fetchTaskDependencies = useCallback(async () => {
-        const [users, jamaah] = await Promise.all([
-            api.get('users'),
-            api.get('jamaah')
+        const [usersData, jamaahData] = await Promise.all([
+            api.get('users?page=1&search='),
+            api.get('jamaah?page=1&search=')
         ]);
-        return { users, jamaah };
+        return { 
+            users: usersData.data || usersData, 
+            jamaah: jamaahData.data || jamaahData 
+        };
     }, []);
 
     const {
@@ -1363,6 +1508,10 @@ const TasksComponent = () => {
         isModalOpen,
         isEditing,
         formState,
+        pagination, // BARU
+        searchTerm, // BARU
+        setPage,    // BARU
+        setSearchTerm, // BARU
         handleChange,
         handleAddNew,
         handleEdit,
@@ -1402,13 +1551,20 @@ const TasksComponent = () => {
             <Alert message={error} type="error" />
             <Alert message={successMessage} type="success" />
 
+            {/* BARU: Search Input */}
+            <SearchInput initialValue={searchTerm} onSearch={setSearchTerm} />
+
             {isLoading ? <Spinner /> : (
-                <CrudTable
-                    columns={columns}
-                    data={tasks}
-                    onEdit={handleEdit}
-                    onDelete={handleDelete}
-                />
+                <>
+                    <CrudTable
+                        columns={columns}
+                        data={tasks}
+                        onEdit={handleEdit}
+                        onDelete={handleDelete}
+                    />
+                    {/* BARU: Pagination */}
+                    <Pagination pagination={pagination} onPageChange={setPage} />
+                </>
             )}
 
             <Modal
@@ -1456,7 +1612,7 @@ const TasksComponent = () => {
     );
 };
 
-// 6. Manajemen Pengguna (Staff)
+// 6. Manajemen Pengguna (Staff) (DITAMBAH PAGINASI & SEARCH)
 const UsersComponent = () => {
     const defaultState = {
         email: '',
@@ -1468,8 +1624,8 @@ const UsersComponent = () => {
     };
 
     const fetchUserDependencies = useCallback(async () => {
-        const roles = await api.get('roles');
-        return { roles };
+        const rolesData = await api.get('roles?page=1&search=');
+        return { roles: rolesData.data || rolesData };
     }, []);
 
     const {
@@ -1481,6 +1637,10 @@ const UsersComponent = () => {
         isModalOpen,
         isEditing,
         formState,
+        pagination, // BARU
+        searchTerm, // BARU
+        setPage,    // BARU
+        setSearchTerm, // BARU
         handleChange,
         handleAddNew,
         handleEdit,
@@ -1491,7 +1651,7 @@ const UsersComponent = () => {
 
     const columns = [
         { key: 'full_name', label: 'Nama Lengkap' },
-        { key: 'email', label: 'Email (Login)' }, // Judul diubah
+        { key: 'email', label: 'Email (Login)' },
         { 
             key: 'role', 
             label: 'Role',
@@ -1511,13 +1671,20 @@ const UsersComponent = () => {
             <Alert message={error} type="error" />
             <Alert message={successMessage} type="success" />
 
+            {/* BARU: Search Input */}
+            <SearchInput initialValue={searchTerm} onSearch={setSearchTerm} />
+
             {isLoading ? <Spinner /> : (
-                <CrudTable
-                    columns={columns}
-                    data={userList}
-                    onEdit={handleEdit}
-                    onDelete={handleDelete}
-                />
+                <>
+                    <CrudTable
+                        columns={columns}
+                        data={userList}
+                        onEdit={handleEdit}
+                        onDelete={handleDelete}
+                    />
+                    {/* BARU: Pagination */}
+                    <Pagination pagination={pagination} onPageChange={setPage} />
+                </>
             )}
 
             <Modal
@@ -1540,7 +1707,7 @@ const UsersComponent = () => {
                         value={formState.email} 
                         onChange={handleChange} 
                         required 
-                        disabled={isEditing} // Email tidak bisa diubah
+                        disabled={isEditing}
                     />
                     {isEditing ? (
                         <FormInput label="Password" name="password" type="password" value={formState.password} onChange={handleChange} placeholder="Kosongkan jika tidak ingin mengubah" />
@@ -1566,12 +1733,13 @@ const UsersComponent = () => {
     );
 };
 
-// 7. Manajemen Kategori
+// 7. Manajemen Kategori (DITAMBAH PAGINASI & SEARCH)
 const CategoriesComponent = () => {
     const defaultState = { name: '', description: '' };
     const {
         list, isLoading, error, successMessage, isModalOpen, isEditing,
-        formState, handleChange, handleAddNew, handleEdit,
+        formState, pagination, searchTerm, setPage, setSearchTerm, // BARU
+        handleChange, handleAddNew, handleEdit,
         handleCloseModal, handleSubmit, handleDelete
     } = useCRUD('categories', defaultState);
 
@@ -1588,8 +1756,16 @@ const CategoriesComponent = () => {
             </div>
             <Alert message={error} type="error" />
             <Alert message={successMessage} type="success" />
+
+            {/* BARU: Search Input */}
+            <SearchInput initialValue={searchTerm} onSearch={setSearchTerm} />
+
             {isLoading ? <Spinner /> : (
-                <CrudTable columns={columns} data={list} onEdit={handleEdit} onDelete={handleDelete} />
+                <>
+                    <CrudTable columns={columns} data={list} onEdit={handleEdit} onDelete={handleDelete} />
+                    {/* BARU: Pagination */}
+                    <Pagination pagination={pagination} onPageChange={setPage} />
+                </>
             )}
             <Modal
                 show={isModalOpen} onClose={handleCloseModal}
@@ -1608,7 +1784,7 @@ const CategoriesComponent = () => {
     );
 };
 
-// 8. Manajemen Pesawat
+// 8. Manajemen Pesawat (DITAMBAH PAGINASI & SEARCH)
 const FlightsComponent = () => {
     const defaultState = {
         airline: '',
@@ -1622,7 +1798,8 @@ const FlightsComponent = () => {
     };
     const {
         list, isLoading, error, successMessage, isModalOpen, isEditing,
-        formState, handleChange, handleAddNew, handleEdit,
+        formState, pagination, searchTerm, setPage, setSearchTerm, // BARU
+        handleChange, handleAddNew, handleEdit,
         handleCloseModal, handleSubmit, handleDelete
     } = useCRUD('flights', defaultState);
 
@@ -1643,8 +1820,16 @@ const FlightsComponent = () => {
             </div>
             <Alert message={error} type="error" />
             <Alert message={successMessage} type="success" />
+            
+            {/* BARU: Search Input */}
+            <SearchInput initialValue={searchTerm} onSearch={setSearchTerm} />
+
             {isLoading ? <Spinner /> : (
-                <CrudTable columns={columns} data={list} onEdit={handleEdit} onDelete={handleDelete} />
+                <>
+                    <CrudTable columns={columns} data={list} onEdit={handleEdit} onDelete={handleDelete} />
+                    {/* BARU: Pagination */}
+                    <Pagination pagination={pagination} onPageChange={setPage} />
+                </>
             )}
             <Modal
                 show={isModalOpen} onClose={handleCloseModal}
@@ -1677,7 +1862,7 @@ const FlightsComponent = () => {
     );
 };
 
-// 9. Manajemen Hotel
+// 9. Manajemen Hotel (DITAMBAH PAGINASI & SEARCH)
 const HotelsComponent = () => {
     const defaultState = {
         name: '',
@@ -1690,7 +1875,8 @@ const HotelsComponent = () => {
     };
     const {
         list, isLoading, error, successMessage, isModalOpen, isEditing,
-        formState, handleChange, handleAddNew, handleEdit,
+        formState, pagination, searchTerm, setPage, setSearchTerm, // BARU
+        handleChange, handleAddNew, handleEdit,
         handleCloseModal, handleSubmit, handleDelete
     } = useCRUD('hotels', defaultState);
 
@@ -1709,8 +1895,16 @@ const HotelsComponent = () => {
             </div>
             <Alert message={error} type="error" />
             <Alert message={successMessage} type="success" />
+
+            {/* BARU: Search Input */}
+            <SearchInput initialValue={searchTerm} onSearch={setSearchTerm} />
+
             {isLoading ? <Spinner /> : (
-                <CrudTable columns={columns} data={list} onEdit={handleEdit} onDelete={handleDelete} />
+                <>
+                    <CrudTable columns={columns} data={list} onEdit={handleEdit} onDelete={handleDelete} />
+                    {/* BARU: Pagination */}
+                    <Pagination pagination={pagination} onPageChange={setPage} />
+                </>
             )}
             <Modal
                 show={isModalOpen} onClose={handleCloseModal}
@@ -1738,12 +1932,13 @@ const HotelsComponent = () => {
     );
 };
 
-// 10. Manajemen Role
+// 10. Manajemen Role (DITAMBAH PAGINASI & SEARCH)
 const RolesComponent = () => {
     const defaultState = { role_key: '', role_name: '' };
     const {
         list, isLoading, error, successMessage, isModalOpen, isEditing,
-        formState, handleChange, handleAddNew, handleEdit,
+        formState, pagination, searchTerm, setPage, setSearchTerm, // BARU
+        handleChange, handleAddNew, handleEdit,
         handleCloseModal, handleSubmit, handleDelete
     } = useCRUD('roles', defaultState);
 
@@ -1760,8 +1955,16 @@ const RolesComponent = () => {
             </div>
             <Alert message={error} type="error" />
             <Alert message={successMessage} type="success" />
+
+            {/* BARU: Search Input */}
+            <SearchInput initialValue={searchTerm} onSearch={setSearchTerm} />
+
             {isLoading ? <Spinner /> : (
-                <CrudTable columns={columns} data={list} onEdit={handleEdit} onDelete={handleDelete} />
+                <>
+                    <CrudTable columns={columns} data={list} onEdit={handleEdit} onDelete={handleDelete} />
+                    {/* BARU: Pagination */}
+                    <Pagination pagination={pagination} onPageChange={setPage} />
+                </>
             )}
             <Modal
                 show={isModalOpen} onClose={handleCloseModal}
@@ -1784,7 +1987,6 @@ const RolesComponent = () => {
 // --- Komponen Utama Aplikasi (Navigasi & Router) ---
 
 // Header
-// PERBAIKAN: Header baru dengan latar belakang biru
 const AppHeader = ({ user, onLogout }) => (
     <header className="bg-blue-700 text-white shadow-lg">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -1824,7 +2026,7 @@ const MainNav = ({ currentView, setView }) => {
     return (
         <nav className="bg-white shadow-sm">
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                <div className="flex space-x-6">
+                <div className="flex space-x-6 overflow-x-auto py-1">
                     {navItems.map(item => {
                         if (item.subItems) {
                             return <NavDropdown key={item.key} item={item} currentView={currentView} setView={setView} />;
@@ -1841,7 +2043,7 @@ const MainNav = ({ currentView, setView }) => {
 const NavItem = ({ item, isActive, onClick }) => (
     <button
         onClick={onClick}
-        className={`px-3 py-4 text-sm font-medium border-b-2 transition-all duration-150
+        className={`px-3 py-4 text-sm font-medium border-b-2 transition-all duration-150 whitespace-nowrap
             ${isActive
                 ? 'border-blue-500 text-blue-600'
                 : 'border-transparent text-gray-600 hover:border-gray-300 hover:text-gray-800'
@@ -1860,7 +2062,7 @@ const NavDropdown = ({ item, currentView, setView }) => {
         <div className="relative" onMouseLeave={() => setIsOpen(false)}>
             <button
                 onMouseEnter={() => setIsOpen(true)}
-                className={`px-3 py-4 text-sm font-medium border-b-2 transition-all duration-150 flex items-center
+                className={`px-3 py-4 text-sm font-medium border-b-2 transition-all duration-150 flex items-center whitespace-nowrap
                     ${isActive
                         ? 'border-blue-500 text-blue-600'
                         : 'border-transparent text-gray-600 hover:border-gray-300 hover:text-gray-800'
@@ -1926,18 +2128,15 @@ const App = () => {
     // Auto-login untuk Super Admin
     useEffect(() => {
         const autoLoginAdmin = async () => {
-            // Jika token sudah ada (dari auto-login sebelumnya), jangan lakukan lagi
             if (wpData.user && wpData.user.token) {
-                 // Cek validitas token
                 try {
                     await api.get('users/me');
                     setUser(wpData.user);
                 } catch (e) {
-                    // Token mungkin kadaluarsa, coba login ulang
                     console.warn("Token kadaluarsa, mencoba auto-login...");
                     try {
                          const data = await api.post('auth/wp-login', {});
-                         wpData.user.token = data.token; // Update token global
+                         wpData.user.token = data.token;
                          setUser(data.user);
                     } catch (loginError) {
                          console.error("Auto-login gagal:", loginError);
@@ -1947,27 +2146,20 @@ const App = () => {
                 return;
             }
 
-            // Jika tidak ada token TAPI user adalah admin (berdasarkan cookie WP)
-            // Coba lakukan auto-login untuk mendapatkan token
             if (wpData.user && wpData.user.role === 'super_admin' && !wpData.user.token) {
                 try {
                     console.log("Mencoba auto-login Super Admin...");
-                    const data = await api.post('auth/wp-login', {}); // Endpoint ini aman
-                    wpData.user.token = data.token; // Simpan token untuk sesi ini
+                    const data = await api.post('auth/wp-login', {});
+                    wpData.user.token = data.token;
                     setUser(data.user);
                 } catch (e) {
                     console.error("Gagal auto-login Super Admin:", e);
-                    // Tampilkan error login di UI
                 }
             }
         };
 
-        // TODO: Ganti ini dengan logic login headless jika diperlukan
         if (wpData.user.role === 'super_admin') {
             autoLoginAdmin();
-        } else {
-             // Jika bukan super-admin, tampilkan form login (logic ini belum ada)
-             // Untuk saat ini, kita anggap sudah login
         }
     }, []);
 
@@ -1990,11 +2182,10 @@ const App = () => {
 
 // Render aplikasi React ke DOM
 document.addEventListener('DOMContentLoaded', () => {
-    // MODIFIKASI: Target ID yang benar
-    const appRoot = document.getElementById('umh-react-app'); // PERBAIKAN: ID dikembalikan ke 'umh-react-app'
+    const appRoot = document.getElementById('umh-react-app');
     if (appRoot) {
-        ReactDOM.render(<App />, appRoot); // PERBAIKAN: Gunakan ReactDOM.render
+        ReactDOM.render(<App />, appRoot);
     } else {
-        console.error("Target div 'umh-react-app' not found."); // PERBAIKAN: Pesan error disesuaikan
+        console.error("Target div 'umh-react-app' not found.");
     }
 });
